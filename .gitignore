@@ -25,6 +25,9 @@
 !/docs/RELEASES.md
 !/docs/DISTRIBUTION.md
 
+# Local setup launcher used by the excluded root CMD wrappers.
+/scripts/Launch-Setup.ps1
+
 # Generated files and private work records, including nested copies.
 .tools/
 .review/
