@@ -1,0 +1,197 @@
+#include "Extension.h"
+#include <shlobj.h>
+#include <shellapi.h>
+#include <atomic>
+#include <cstring>
+#include <iostream>
+#include <functional>
+#include <set>
+#include <stdexcept>
+
+namespace {
+void Check(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
+class DataObject final : public IDataObject {
+    std::atomic<ULONG> references{1};
+    std::vector<std::wstring> paths;
+public:
+    explicit DataObject(std::vector<std::wstring> selected) : paths(std::move(selected)) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
+        if (!object) return E_POINTER; *object = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IDataObject) return E_NOINTERFACE;
+        *object = static_cast<IDataObject*>(this); AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++references; }
+    ULONG STDMETHODCALLTYPE Release() override { const auto remaining = --references; if (!remaining) delete this; return remaining; }
+    HRESULT STDMETHODCALLTYPE GetData(FORMATETC* format, STGMEDIUM* medium) override {
+        if (!format || !medium) return E_POINTER;
+        if (format->cfFormat != CF_HDROP || !(format->tymed & TYMED_HGLOBAL)) return DV_E_FORMATETC;
+        size_t characters = 1;
+        for (const auto& path : paths) characters += path.size() + 1;
+        const size_t bytes = sizeof(DROPFILES) + characters * sizeof(wchar_t);
+        const auto memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+        if (!memory) return E_OUTOFMEMORY;
+        auto* drop = static_cast<DROPFILES*>(GlobalLock(memory));
+        if (!drop) { GlobalFree(memory); return E_OUTOFMEMORY; }
+        drop->pFiles = sizeof(DROPFILES); drop->fWide = TRUE;
+        auto* position = reinterpret_cast<wchar_t*>(reinterpret_cast<BYTE*>(drop) + sizeof(DROPFILES));
+        for (const auto& path : paths) {
+            memcpy(position, path.c_str(), (path.size() + 1) * sizeof(wchar_t)); position += path.size() + 1;
+        }
+        GlobalUnlock(memory);
+        medium->tymed = TYMED_HGLOBAL; medium->hGlobal = memory; medium->pUnkForRelease = nullptr;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetDataHere(FORMATETC*, STGMEDIUM*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE QueryGetData(FORMATETC* format) override { return format && format->cfFormat == CF_HDROP ? S_OK : DV_E_FORMATETC; }
+    HRESULT STDMETHODCALLTYPE GetCanonicalFormatEtc(FORMATETC*, FORMATETC* output) override { if (output) output->ptd = nullptr; return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetData(FORMATETC*, STGMEDIUM*, BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE EnumFormatEtc(DWORD, IEnumFORMATETC**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE DAdvise(FORMATETC*, DWORD, IAdviseSink*, DWORD*) override { return OLE_E_ADVISENOTSUPPORTED; }
+    HRESULT STDMETHODCALLTYPE DUnadvise(DWORD) override { return OLE_E_ADVISENOTSUPPORTED; }
+    HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA**) override { return OLE_E_ADVISENOTSUPPORTED; }
+};
+}
+
+int wmain(int argc, wchar_t** argv)
+{
+    try {
+        Check(argc >= 5, "Usage: shell_probe dll extract|compress|none invokeDiagnostic(0|1) paths...");
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)), "COM initialization");
+        std::vector<std::wstring> paths;
+        for (int i = 4; i < argc; ++i) paths.emplace_back(argv[i]);
+        const bool registered = std::wstring(argv[1]) == L"--registered";
+        const auto module = registered ? nullptr : LoadLibraryW(argv[1]);
+        if (!registered && !module) std::cerr << "LoadLibrary error: " << GetLastError() << '\n';
+        Check(registered || module != nullptr, "LoadLibrary");
+        const auto getFactory = registered ? nullptr : reinterpret_cast<HRESULT(__stdcall*)(REFCLSID, REFIID, void**)>(GetProcAddress(module, "DllGetClassObject"));
+        const auto canUnload = registered ? nullptr : reinterpret_cast<HRESULT(__stdcall*)()>(GetProcAddress(module, "DllCanUnloadNow"));
+        Check(registered || (getFactory && canUnload), "COM exports");
+        IClassFactory* factory = nullptr;
+        const HRESULT factoryResult = registered
+            ? CoGetClassObject(kExtensionClsid, CLSCTX_INPROC_SERVER, nullptr, IID_IClassFactory, reinterpret_cast<void**>(&factory))
+            : getFactory(kExtensionClsid, IID_IClassFactory, reinterpret_cast<void**>(&factory));
+        Check(SUCCEEDED(factoryResult), "GetClassObject");
+        IShellExtInit* initialization = nullptr;
+        Check(SUCCEEDED(factory->CreateInstance(nullptr, IID_IShellExtInit, reinterpret_cast<void**>(&initialization))), "CreateInstance");
+        IContextMenu* context = nullptr;
+        Check(SUCCEEDED(initialization->QueryInterface(IID_IContextMenu, reinterpret_cast<void**>(&context))), "IContextMenu");
+        auto* data = new DataObject(paths);
+        Check(SUCCEEDED(initialization->Initialize(nullptr, data, nullptr)), "Initialize CF_HDROP"); data->Release();
+        if (std::wstring(argv[3]) == L"reject-admin") {
+            CMINVOKECOMMANDINFO info{}; info.cbSize = sizeof(info); info.lpVerb = "SevenZipExt.Diagnose";
+            Check(context->InvokeCommand(&info) == E_ACCESSDENIED, "Elevated host cannot dispatch worker");
+            context->Release(); initialization->Release(); factory->Release();
+            if (!registered) { Check(canUnload() == S_OK, "COM lifetime/unload"); FreeLibrary(module); }
+            CoUninitialize();
+            std::cout << "PASS: elevated host rejected before request creation\n";
+            return 0;
+        }
+        HMENU menu = CreatePopupMenu(); Check(menu != nullptr, "CreatePopupMenu");
+        const auto hr = context->QueryContextMenu(menu, 0, 100, 200, CMF_NORMAL);
+        const std::wstring mode(argv[2]);
+        const bool optionsTest = mode.starts_with(L"options-");
+        const bool none = mode == L"none";
+        if (optionsTest) {
+            const bool direct = mode.find(L"direct") != std::wstring::npos;
+            const bool off = mode.find(L"off") != std::wstring::npos;
+            const bool icons = mode.find(L"icons") != std::wstring::npos;
+            const bool hidden = mode.find(L"hidden") != std::wstring::npos;
+            if (hidden && off) {
+                Check(hr == S_OK && GetMenuItemCount(menu) == 0, "All-off with settings hidden leaves no empty popup");
+            } else {
+            Check(SUCCEEDED(hr) && HRESULT_CODE(hr) > 0, "Options command allocation");
+            if (!direct) Check(GetMenuItemCount(menu) == 1 && GetSubMenu(menu, 0), "Cascaded layout");
+            else Check(off ? GetMenuItemCount(menu) == 1 : GetMenuItemCount(menu) > 1, "Direct layout");
+            std::set<UINT> ids;
+            std::set<std::string> verbs;
+            std::function<void(HMENU)> inspect = [&](HMENU current) {
+                for (int n = 0; n < GetMenuItemCount(current); ++n) {
+                    MENUITEMINFOW item{}; item.cbSize = sizeof(item); item.fMask = MIIM_ID | MIIM_SUBMENU | MIIM_BITMAP;
+                    Check(GetMenuItemInfoW(current, static_cast<UINT>(n), TRUE, &item) != FALSE, "Read menu item");
+                    Check(item.wID >= 100 && item.wID < 100U + static_cast<UINT>(HRESULT_CODE(hr)), "ID is inside allocation");
+                    Check(ids.insert(item.wID).second, "Unique leaf/popup command IDs");
+                    Check((item.hbmpItem != nullptr) == icons, "Icon option on every item");
+                    if (item.hSubMenu) { inspect(item.hSubMenu); continue; }
+                    char verb[128]{};
+                    Check(SUCCEEDED(context->GetCommandString(item.wID - 100, GCS_VERBA, nullptr, verb, 128)), "Options canonical verb");
+                    Check(verbs.insert(verb).second, "Unique canonical verbs");
+                    if (std::string(verb) == "SevenZipExt.QuickZip" || std::string(verb) == "SevenZipExt.Quick7z") {
+                        const bool zip = std::string(verb) == "SevenZipExt.QuickZip";
+                        const bool archive = paths.size() == 1 && paths[0].ends_with(L".zip") && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
+                        const std::wstring expected = paths.size() > 1 ? (zip ? L"하나의 ZIP으로 압축하기" : L"하나의 7z로 압축하기")
+                            : archive ? (zip ? L"압축파일을 ZIP으로 감싸기" : L"압축파일을 7z로 감싸기")
+                            : (zip ? L"ZIP으로 압축하기" : L"7z로 압축하기");
+                        wchar_t title[256]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 256, MF_BYPOSITION);
+                        Check(std::wstring(title) == expected, "Quick compression label matches selection");
+                    }
+                }
+            };
+            inspect(menu);
+            Check(ids.size() == static_cast<size_t>(HRESULT_CODE(hr)), "Exact command budget including popups");
+            Check(verbs.contains("SevenZipExt.Settings") == !hidden, "Settings entry visibility");
+            if (off) Check(verbs.size() == 1, "All commands hidden");
+            else if (mode.find(L"filter") != std::wstring::npos) {
+                Check(verbs.size() == 2 && verbs.contains("SevenZipExt.Quick7z"), "One enabled command plus settings");
+            } else {
+                Check(verbs.contains("SevenZipExt.HashSHA256") && verbs.contains("SevenZipExt.HashTest"), "Hash children");
+                Check(verbs.contains("SevenZipExt.QuickZip") && verbs.contains("SevenZipExt.AddDialog"), "Shared compression entries");
+                Check(verbs.contains("SevenZipExt.OpenZip") == (paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY)), "Open requires one file");
+            }
+            // Re-query the same COM object with the exact budget and then one fewer ID.
+            UINT count = HRESULT_CODE(hr);
+            HMENU exact = CreatePopupMenu();
+            Check(static_cast<UINT>(HRESULT_CODE(context->QueryContextMenu(exact, 0, 100, 100 + count - 1, CMF_NORMAL))) == count, "Exact budget works");
+            DestroyMenu(exact);
+            if (count > 1) {
+                HMENU limited = CreatePopupMenu();
+                Check(context->QueryContextMenu(limited, 0, 100, 100 + count - 2, CMF_NORMAL) == S_OK && GetMenuItemCount(limited) == 0, "Insufficient budget inserts nothing");
+                DestroyMenu(limited);
+            }
+            HKEY optionsKey = nullptr;
+            Check(RegOpenKeyExW(HKEY_CURRENT_USER, kOptionsKey, 0, KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_WOW64_64KEY, &optionsKey) == ERROR_SUCCESS, "Open test options");
+            DWORD original = 0, bytes = sizeof(original);
+            Check(RegQueryValueExW(optionsKey, L"OptionsV1", nullptr, nullptr, reinterpret_cast<BYTE*>(&original), &bytes) == ERROR_SUCCESS, "Read original options");
+            const DWORD changed = original ^ kDirectMenu;
+            const LSTATUS written = RegSetValueExW(optionsKey, L"OptionsV1", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&changed), sizeof(changed));
+            HMENU refreshed = CreatePopupMenu();
+            const auto refreshResult = context->QueryContextMenu(refreshed, 0, 100, 200, CMF_NORMAL);
+            const bool refreshedLayout = direct ? GetSubMenu(refreshed, 0) != nullptr
+                : (off ? GetSubMenu(refreshed, 0) == nullptr : GetMenuItemCount(refreshed) > 1);
+            const LSTATUS restored = RegSetValueExW(optionsKey, L"OptionsV1", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&original), sizeof(original));
+            RegCloseKey(optionsKey); DestroyMenu(refreshed);
+            Check(written == ERROR_SUCCESS && restored == ERROR_SUCCESS && SUCCEEDED(refreshResult) && refreshedLayout, "Same loaded handler picks up changed settings");
+            }
+        } else {
+        Check(SUCCEEDED(hr) && HRESULT_CODE(hr) == (none ? 0 : 4), "Command ID allocation");
+        Check(GetMenuItemCount(menu) == (none ? 0 : 1), "Root menu count");
+        if (!none) {
+            MENUITEMINFOW rootItem{}; rootItem.cbSize = sizeof(rootItem); rootItem.fMask = MIIM_BITMAP;
+            Check(GetMenuItemInfoW(menu, 0, TRUE, &rootItem) && rootItem.hbmpItem, "Menu icon resource");
+            const auto submenu = GetSubMenu(menu, 0); Check(submenu && GetMenuItemCount(submenu) == 3, "Two commands plus settings");
+            char verb[128]{};
+            Check(SUCCEEDED(context->GetCommandString(0, GCS_VERBA, nullptr, verb, 128)), "ANSI verb");
+            const bool extracting = std::wstring(argv[2]) == L"extract";
+            Check(std::string(verb) == (extracting ? "SevenZipExt.SmartExtract" : "SevenZipExt.CompressZip"), "Selection type");
+            wchar_t label[128]{}; GetMenuStringW(submenu, 0, label, 128, MF_BYPOSITION);
+            Check((std::wstring(label).starts_with(L"각각")) == (paths.size() > 1), "Single/multiple title");
+            wchar_t wideVerb[128]{};
+            Check(SUCCEEDED(context->GetCommandString(0, GCS_VERBW, nullptr, reinterpret_cast<LPSTR>(wideVerb), 128)), "Unicode verb");
+            Check(std::wstring(wideVerb) == std::wstring(verb, verb + strlen(verb)), "Canonical verb consistency");
+        }
+        }
+        DestroyMenu(menu);
+        menu = CreatePopupMenu();
+        Check(context->QueryContextMenu(menu, 0, 100, 200, CMF_DEFAULTONLY) == S_OK && GetMenuItemCount(menu) == 0, "Default-only menu");
+        if (!optionsTest) Check(context->QueryContextMenu(menu, 0, 100, 100, CMF_NORMAL) == S_OK && GetMenuItemCount(menu) == 0, "Small ID budget");
+        DestroyMenu(menu);
+        if (std::wstring(argv[3]) == L"1") {
+            CMINVOKECOMMANDINFO info{}; info.cbSize = sizeof(info); info.lpVerb = "SevenZipExt.Diagnose"; info.nShow = SW_SHOWNORMAL;
+            Check(SUCCEEDED(context->InvokeCommand(&info)), "Worker diagnostic dispatch");
+        }
+        context->Release(); initialization->Release(); factory->Release();
+        if (!registered) { Check(canUnload() == S_OK, "COM lifetime/unload"); FreeLibrary(module); }
+        CoUninitialize();
+        std::wcout << L"PASS: " << sizeof(void*) * 8 << L"-bit, " << paths.size() << L" selected, " << argv[2] << L'\n';
+        return 0;
+    } catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
+}

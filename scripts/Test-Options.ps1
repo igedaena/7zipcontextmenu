@@ -1,0 +1,77 @@
+﻿[CmdletBinding()]
+param()
+$ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$testRoot = Join-Path $projectRoot ('.review\options-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
+New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+$hive = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Registry64)
+$keyPath = 'Software\SevenZipContextMenu'
+$existing = $hive.OpenSubKey($keyPath)
+$keyExisted = $null -ne $existing
+$valueExisted = $existing -and $existing.GetValueNames() -contains 'OptionsV1'
+$savedValue = $null; $savedKind = $null
+if ($valueExisted) { $savedValue = $existing.GetValue('OptionsV1'); $savedKind = $existing.GetValueKind('OptionsV1') }
+if ($existing) { $existing.Dispose() }
+$key = $hive.CreateSubKey($keyPath)
+try {
+    $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    foreach ($fixture in @(
+        @{Name='old'; Tool='26.4.0.0'; Engine='26.5.0.0'},
+        @{Name='minimum'; Tool='26.5.0.0'; Engine='26.5.0.0'},
+        @{Name='future'; Tool='27.0.0.0'; Engine='27.0.0.0'},
+        @{Name='old-engine'; Tool='26.5.0.0'; Engine='26.4.0.0'},
+        @{Name='missing-engine'; Tool='26.5.0.0'; Engine=$null},
+        @{Name='unversioned'; Tool=$null; Engine='26.5.0.0'})) {
+        $fixtureRoot = Join-Path $testRoot ('versions\' + $fixture.Name)
+        New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+        foreach ($component in @(@{Name='7z.exe';Version=$fixture.Tool},@{Name='7z.dll';Version=$fixture.Engine})) {
+            if ($component.Name -eq '7z.dll' -and -not $component.Version) { continue }
+            $source = 'public sealed class VersionFixture {}'
+            if ($component.Version) { $source = '[assembly: System.Reflection.AssemblyFileVersion("' + $component.Version + '")]' + $source }
+            $sourcePath = Join-Path $fixtureRoot ($component.Name + '.cs')
+            [IO.File]::WriteAllText($sourcePath,$source)
+            & $compiler /nologo /target:library /optimize+ ('/out:' + (Join-Path $fixtureRoot $component.Name)) $sourcePath
+            if ($LASTEXITCODE -ne 0) { throw 'Version fixture compilation failed' }
+        }
+    }
+    $exe = Join-Path $testRoot 'options_tests.exe'
+    & $compiler /nologo /target:exe /main:OptionsTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll "/out:$exe" (Join-Path $projectRoot 'tools\options_tests.cs') (Join-Path $projectRoot 'src\worker\Worker.cs') (Join-Path $projectRoot 'src\worker\Settings.cs') (Join-Path $projectRoot 'src\worker\NativeCommands.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'Options test build failed' }
+    & $exe $testRoot | Tee-Object -FilePath (Join-Path $testRoot 'worker-tests.log')
+    if ($LASTEXITCODE -ne 0) { throw 'Options worker/UI tests failed' }
+    $plain = Join-Path $testRoot 'sample.txt'; [IO.File]::WriteAllText($plain,'sample')
+    $archive = Join-Path $testRoot 'sample.zip'; [IO.File]::WriteAllText($archive,'menu fixture')
+    $many = @(1..100 | ForEach-Object { $p = Join-Path $testRoot ("file$_.txt"); [IO.File]::WriteAllText($p,'sample'); $p })
+    $count = 0
+    foreach ($architecture in @('x64','Win32')) {
+        $probe = Join-Path $projectRoot ("build\$architecture\Release\shell_probe.exe")
+        $dll = Join-Path $projectRoot ("build\$architecture\Release\SevenZipContextMenu.dll")
+        foreach ($scenario in @(
+            @{Value=0x31fff; Mode='options-direct-icons'}, @{Value=0x21fff; Mode='options-cascade-icons'},
+            @{Value=0x11fff; Mode='options-direct'}, @{Value=0x1fff; Mode='options-cascade'},
+            @{Value=0x10000; Mode='options-direct-off'}, @{Value=0; Mode='options-cascade-off'},
+            @{Value=0x10800; Mode='options-direct-filter'},
+            @{Value=0x71fff; Mode='options-direct-icons-hidden'}, @{Value=0x61fff; Mode='options-cascade-icons-hidden'},
+            @{Value=0x50000; Mode='options-direct-hidden-off'}, @{Value=0x40000; Mode='options-cascade-hidden-off'})) {
+            $key.SetValue('OptionsV1',[int]$scenario.Value,[Microsoft.Win32.RegistryValueKind]::DWord)
+            foreach ($selection in @(@($plain),@($archive),@($testRoot),@($plain,$archive),$many)) {
+                & $probe $dll $scenario.Mode 0 @selection
+                if ($LASTEXITCODE -ne 0) { throw "Shell options failed: $architecture $($scenario.Mode)" }
+                $count++
+            }
+        }
+        # Bad settings fall back to defaults in the DLL, not an empty menu.
+        $key.SetValue('OptionsV1','invalid',[Microsoft.Win32.RegistryValueKind]::String)
+        & $probe $dll compress 0 $plain
+        if ($LASTEXITCODE -ne 0) { throw 'Invalid-setting fallback failed' }
+    }
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    [pscustomobject]@{Success=$true; PackageVersion='0.4.1'; MenuScenarios=$count; BothArchitectures=$true; SettingsUi=$true; NativeCommandArguments=$true; RuntimeIsAdministrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); TestRoot=$testRoot; PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\options-test-results.json') -Encoding UTF8
+} finally {
+    if ($valueExisted) { $key.SetValue('OptionsV1',$savedValue,$savedKind) } else { $key.DeleteValue('OptionsV1',$false) }
+    $empty = $key.GetValueNames().Count -eq 0 -and $key.GetSubKeyNames().Count -eq 0
+    $key.Dispose()
+    if (-not $keyExisted -and $empty) { $hive.DeleteSubKey($keyPath,$false) }
+    $hive.Dispose()
+}
