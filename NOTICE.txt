@@ -1,4 +1,4 @@
-7-Zip Extension Menu / 7-Zip 확장 메뉴 0.4.1
+7-Zip Extension Menu / 7-Zip 확장 메뉴 0.4.2
 Copyright (C) 2026 igedaena
 SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -17,8 +17,8 @@ along with this program, in the file LICENSE. If not, see
 https://www.gnu.org/licenses/.
 
 Complete corresponding source and build instructions for this release:
-https://github.com/igedaena/7zipcontextmenu/tree/v0.4.1
-https://github.com/igedaena/7zipcontextmenu/archive/refs/tags/v0.4.1.zip
+https://github.com/igedaena/7zipcontextmenu/tree/v0.4.2
+https://github.com/igedaena/7zipcontextmenu/archive/refs/tags/v0.4.2.zip
 
 See SOURCE.txt for source access and THIRD_PARTY_NOTICES.md for the
 separate terms and provenance of external components and artwork.

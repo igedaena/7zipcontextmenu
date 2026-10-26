@@ -19,7 +19,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator privileges are required for the public installer test.' }
-$setup = Join-Path $projectRoot 'dist\SevenZipExtension-Setup-0.4.1.exe'
+$setup = Join-Path $projectRoot 'dist\SevenZipExtension-Setup-0.4.2.exe'
 $target = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'SevenZipContextMenu'
 $appKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{E59B3E67-D2E0-4B08-B1DF-A3D277C53D18}_is1'
 $classKey = 'Software\Classes\CLSID\{A5CF4977-65A2-4C35-B147-EB2239F4B720}'

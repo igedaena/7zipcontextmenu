@@ -15,6 +15,33 @@
 #include "Extension.h"
 #include <algorithm>
 #include <cwctype>
+#include <filesystem>
+
+// Keep the displayed output name consistent with Engine.QuickArchivePath.
+static std::wstring QuickArchiveName(const std::vector<std::wstring>& paths, const wchar_t* extension)
+{
+    std::filesystem::path first(paths[0]);
+    while (first.has_relative_path() && first.filename().empty()) first = first.parent_path();
+    const auto parent = first.parent_path();
+    std::wstring stem;
+    if (paths.size() > 1) stem = parent.filename().wstring();
+    else {
+        stem = first.filename().wstring();
+        if (!(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY)) {
+            const auto dot = stem.find_last_of(L'.');
+            if (dot != std::wstring::npos) stem.resize(dot);
+        }
+    }
+    if (stem.empty()) stem = L"archive";
+    for (int i = 1; i <= 10000; ++i) {
+        const auto name = stem + (i == 1 ? L"" : L" (" + std::to_wstring(i) + L")") + extension;
+        if (GetFileAttributesW((parent / name).c_str()) != INVALID_FILE_ATTRIBUTES) continue;
+        std::wstring escaped;
+        for (const auto ch : name) { escaped += ch; if (ch == L'&') escaped += ch; }
+        return L"\"" + escaped + L"\" 에 추가";
+    }
+    return {};
+}
 
 bool IsArchiveName(const std::wstring& path)
 {
@@ -59,11 +86,11 @@ std::vector<Command> CommandCatalog()
         {O::OpenCab, L"cab", "SevenZipExt.OpenCab", 32, 1},
         {O::OpenRar, L"rar", "SevenZipExt.OpenRar", 32, 1},
         {O::ExtractDialog, L"압축 풀기…", "SevenZipExt.ExtractDialog", 64},
-        {O::ExtractHere, L"여기에 풀기", "SevenZipExt.ExtractHere", 128},
+        {O::ExtractHere, L"여기에 압축 풀기", "SevenZipExt.ExtractHere", 128},
         {O::Test, L"압축파일 테스트", "SevenZipExt.Test", 256},
         {O::AddDialog, L"압축파일에 추가…", "SevenZipExt.AddDialog", 512},
-        {O::QuickZip, L"하나의 ZIP으로 압축하기", "SevenZipExt.QuickZip", 1024},
-        {O::Quick7z, L"하나의 7z로 압축하기", "SevenZipExt.Quick7z", 2048},
+        {O::QuickZip, L"ZIP 압축파일에 추가", "SevenZipExt.QuickZip", 1024},
+        {O::Quick7z, L"7z 압축파일에 추가", "SevenZipExt.Quick7z", 2048},
         {O::HashCrc32, L"CRC-32", "SevenZipExt.HashCrc32", 4096, 2},
         {O::HashCrc64, L"CRC-64", "SevenZipExt.HashCrc64", 4096, 2},
         {O::HashXXH64, L"XXH64", "SevenZipExt.HashXXH64", 4096, 2},
@@ -100,9 +127,9 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
         if ((op == Operation::CompressZip || op == Operation::Compress7z) && archivesOnly) continue;
         const bool singleFile = paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
         if ((op == Operation::Open || command.group == 1) && !singleFile) continue;
-        if (paths.size() == 1 && (op == Operation::QuickZip || op == Operation::Quick7z)) {
-            const std::wstring target = op == Operation::QuickZip ? L"ZIP으로" : L"7z로";
-            command.title = archivesOnly ? L"압축파일을 " + target + L" 감싸기" : target + L" 압축하기";
+        if (op == Operation::QuickZip || op == Operation::Quick7z) {
+            command.title = QuickArchiveName(paths, op == Operation::QuickZip ? L".zip" : L".7z");
+            if (command.title.empty()) continue;
         }
         if (paths.size() > 1 && (op == Operation::SmartExtract || op == Operation::ExtractToFolder ||
             op == Operation::CompressZip || op == Operation::Compress7z)) command.title = L"각각 " + command.title;

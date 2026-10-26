@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace SevenZipContextMenu
 {
@@ -30,6 +31,34 @@ namespace SevenZipContextMenu
     }
     internal static class NativeCommands
     {
+        internal static LaunchPlan BuildProgressPlan(string sevenZip, string workingDirectory, IEnumerable<string> arguments)
+        {
+            return new LaunchPlan {
+                Executable = Path.Combine(Path.GetDirectoryName(sevenZip), "7zG.exe"),
+                WorkingDirectory = workingDirectory,
+                // Console output redirection is not used by the native progress dialog.
+                Arguments = arguments.Where(a => a != "-bsp0" && a != "-sccUTF-8" && a != "-y").ToArray()
+            };
+        }
+        internal static ProcessResult RunProgress(LaunchPlan plan, CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            RuntimeSafety.EnsureStandardUser();
+            RuntimeSafety.RequireSupportedSevenZip(plan.Executable);
+            using (var process = Process.Start(new ProcessStartInfo(plan.Executable,
+                String.Join(" ", plan.Arguments.Select(Engine.QuoteArgument))) {
+                    UseShellExecute = false, WorkingDirectory = plan.WorkingDirectory })) {
+                try {
+                    while (!process.WaitForExit(100)) cancellation.ThrowIfCancellationRequested();
+                    cancellation.ThrowIfCancellationRequested();
+                    if (process.ExitCode == 255) throw new OperationCanceledException("7-Zip 작업을 취소했습니다.");
+                    return new ProcessResult { ExitCode = process.ExitCode,
+                        Text = process.ExitCode == 0 ? "" : "7-Zip 작업이 완료되지 않았습니다 (코드 " + process.ExitCode + ")." };
+                } finally {
+                    if (!process.HasExited) { process.Kill(); process.WaitForExit(); }
+                }
+            }
+        }
         internal static bool Handles(Operation operation)
         {
             return (operation >= Operation.Open && operation <= Operation.AddDialog) || operation >= Operation.HashCrc32;

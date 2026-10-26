@@ -22,13 +22,12 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("7-Zip 확장")]
-[assembly: System.Reflection.AssemblyVersion("0.4.1.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.2.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.2.0")]
 
 namespace SevenZipContextMenu
 {
@@ -102,9 +101,10 @@ namespace SevenZipContextMenu
         private readonly CancellationToken cancellation;
         private readonly Func<string, string> askPassword;
         private readonly Action<string> status;
+        private readonly bool nativeProgress;
         private string sevenZip;
-        internal Engine(CancellationToken cancellation, Func<string, string> askPassword, Action<string> status)
-        { this.cancellation = cancellation; this.askPassword = askPassword; this.status = status; }
+        internal Engine(CancellationToken cancellation, Func<string, string> askPassword, Action<string> status, bool nativeProgress = false)
+        { this.cancellation = cancellation; this.askPassword = askPassword; this.status = status; this.nativeProgress = nativeProgress; }
 
         internal JobResult Run(Request request)
         {
@@ -285,7 +285,7 @@ namespace SevenZipContextMenu
             string stage = CreateStage(parent);
             try
             {
-                string temporary = Path.Combine(stage, "payload." + format);
+                string temporary = Path.Combine(stage, Path.GetFileName(QuickArchivePath(new[] { input }, format)));
                 ProcessResult process = RunSevenZip(parent, new[] { "a", "-t" + format, "-sse", "-spd", "-sccUTF-8", "-bsp0", "--", temporary, Path.GetFileName(input) }, null);
                 RequireSuccess(process);
                 cancellation.ThrowIfCancellationRequested();
@@ -305,12 +305,20 @@ namespace SevenZipContextMenu
             try {
                 string list = Path.Combine(stage, "inputs.txt");
                 File.WriteAllLines(list, inputs.Select(Path.GetFileName), new UTF8Encoding(false));
-                string temporary = Path.Combine(stage, "payload." + format);
+                string temporary = Path.Combine(stage, Path.GetFileName(QuickArchivePath(inputs, format)));
                 RequireSuccess(RunSevenZip(parent, new[] { "a", "-t" + format, "-sse", "-spd", "-scsUTF-8", "-sccUTF-8", "-bsp0", "-i@" + list, "--", temporary }, null));
                 cancellation.ThrowIfCancellationRequested();
                 string stem = inputs.Length == 1 ? (Directory.Exists(inputs[0]) ? Path.GetFileName(inputs[0]) : Path.GetFileNameWithoutExtension(inputs[0])) : Path.GetFileName(parent);
                 return Publish(temporary, parent, ValidStem(stem) + "." + format, false);
             } finally { Cleanup(stage); }
+        }
+
+        internal static string QuickArchivePath(string[] inputs, string format)
+        {
+            string parent = Path.GetDirectoryName(inputs[0]);
+            string stem = inputs.Length == 1 ? (Directory.Exists(inputs[0]) ? Path.GetFileName(inputs[0])
+                : Path.GetFileNameWithoutExtension(inputs[0])) : Path.GetFileName(parent);
+            return NativeCommands.UnusedName(parent, ValidStem(stem), "." + format);
         }
 
         private string ExtractToStage(string input, string parent)
@@ -324,6 +332,7 @@ namespace SevenZipContextMenu
                 {
                     ProcessResult process = RunSevenZip(parent, new[] { "x", "-y", "-snz", "-sccUTF-8", "-bsp0", "-o" + stage, "--", input }, password);
                     if (process.ExitCode == 0) { CheckExtractedTree(stage); keep = true; return stage; }
+                    if (nativeProgress) RequireSuccess(process); // 7-Zip owns password/error dialogs in GUI mode.
                     if (process.Text.IndexOf("password", StringComparison.OrdinalIgnoreCase) < 0 || attempt == 3)
                         RequireSuccess(process);
                     password = askPassword(input);
@@ -398,6 +407,8 @@ namespace SevenZipContextMenu
             cancellation.ThrowIfCancellationRequested();
             RuntimeSafety.EnsureStandardUser();
             RuntimeSafety.RequireSupportedSevenZip(sevenZip);
+            if (nativeProgress)
+                return NativeCommands.RunProgress(NativeCommands.BuildProgressPlan(sevenZip, workingDirectory, arguments), cancellation);
             var start = new ProcessStartInfo(sevenZip, String.Join(" ", arguments.Select(QuoteArgument))) {
                 UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
@@ -439,69 +450,8 @@ namespace SevenZipContextMenu
         }
     }
 
-    internal sealed class PasswordDialog : Form
-    {
-        private readonly TextBox password = new TextBox { UseSystemPasswordChar = true, Dock = DockStyle.Top };
-        internal string Password { get { return password.Text; } }
-        internal PasswordDialog(string filename)
-        {
-            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            Text = "압축 파일 암호"; Width = 460; Height = 180; FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false; MinimizeBox = false; StartPosition = FormStartPosition.CenterParent;
-            var label = new Label { Text = Path.GetFileName(filename) + "\r\n암호를 입력하세요.", Dock = DockStyle.Top, Height = 45 };
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.RightToLeft };
-            var ok = new Button { Text = "확인", DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel };
-            buttons.Controls.Add(ok); buttons.Controls.Add(cancel);
-            Controls.Add(password); Controls.Add(label); Controls.Add(buttons); Padding = new Padding(12);
-            AcceptButton = ok; CancelButton = cancel;
-        }
-    }
-
-    internal sealed class JobWindow : Form
-    {
-        private readonly Request request;
-        private readonly string resultPath;
-        private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
-        private readonly Label current = new Label { Dock = DockStyle.Top, Height = 48, AutoEllipsis = true };
-        private readonly ProgressBar progress = new ProgressBar { Dock = DockStyle.Top, Style = ProgressBarStyle.Marquee, Height = 20 };
-        private readonly TextBox details = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false };
-        private readonly Button button = new Button { Text = "취소", Dock = DockStyle.Bottom, Height = 32 };
-        private bool running;
-        internal JobWindow(Request request, string resultPath)
-        {
-            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            this.request = request; this.resultPath = resultPath;
-            Text = "7-Zip 확장"; Width = 620; Height = 320; Padding = new Padding(12);
-            StartPosition = FormStartPosition.CenterScreen;
-            Controls.Add(details); Controls.Add(progress); Controls.Add(current); Controls.Add(button);
-            button.Click += delegate { if (running) { cancellation.Cancel(); button.Enabled = false; current.Text = "취소하는 중…"; } else Close(); };
-            FormClosing += delegate(object sender, FormClosingEventArgs e) { if (running) { e.Cancel = true; cancellation.Cancel(); button.Enabled = false; } };
-            Shown += async delegate { await RunJob(); };
-        }
-        private async Task RunJob()
-        {
-            running = true;
-            var engine = new Engine(cancellation.Token,
-                delegate(string file) { return (string)Invoke(new Func<string>(delegate {
-                    if (cancellation.IsCancellationRequested) return null;
-                    using (var dialog = new PasswordDialog(file)) return dialog.ShowDialog(this) == DialogResult.OK ? dialog.Password : null;
-                })); },
-                delegate(string text) { BeginInvoke(new Action(delegate { if (!cancellation.IsCancellationRequested) current.Text = text; })); });
-            JobResult result = await Task.Run(() => engine.Run(request));
-            running = false; progress.Style = ProgressBarStyle.Blocks; progress.Value = 100; button.Enabled = true; button.Text = "닫기";
-            try { Program.WriteResult(resultPath, result); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-            Program.ExitCode = result.Success ? 0 : result.Cancelled ? 2 : 1;
-            if (result.Success) { Close(); return; }
-            current.Text = result.Cancelled ? "작업을 취소했습니다. 완료된 항목은 유지됩니다." : "일부 작업을 완료하지 못했습니다.";
-            details.Text = (result.Error ?? "") + String.Join("\r\n\r\n", result.Items.Select(i =>
-                i.Input + "\r\n" + (i.Success ? "완료: " + i.Output : i.Error)));
-        }
-    }
-
     internal static class Program
     {
-        internal static int ExitCode;
         [STAThread]
         private static int Main(string[] args)
         {
@@ -553,8 +503,16 @@ namespace SevenZipContextMenu
                     return result.Success ? 0 : result.Cancelled ? 2 : 1;
                 }
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new JobWindow(request, resultFile));
-                return ExitCode;
+                JobResult guiResult = new Engine(CancellationToken.None, null, delegate { }, true).Run(request);
+                try { WriteResult(resultFile, guiResult); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                if (!guiResult.Success) {
+                    string summary = guiResult.Cancelled ? "작업을 취소했습니다. 완료된 항목은 유지됩니다." : "일부 작업을 완료하지 못했습니다.";
+                    string details = (guiResult.Error ?? "") + String.Join("\r\n\r\n", guiResult.Items.Select(i =>
+                        i.Input + "\r\n" + (i.Success ? "완료: " + i.Output : i.Error)));
+                    MessageBox.Show(summary + "\r\n\r\n" + details, "7-Zip 확장 작업 결과",
+                        MessageBoxButtons.OK, guiResult.Cancelled ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+                }
+                return guiResult.Success ? 0 : guiResult.Cancelled ? 2 : 1;
             }
             catch (Exception error)
             {

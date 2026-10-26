@@ -22,7 +22,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Portable
 
 첫 명령은 공식 Inno Setup 7.1.0 설치기를 다운로드하고 서명을 확인해 프로젝트의 `.tools/InnoSetup`에 설치합니다. 기존 컴파일러가 있으면 재사용합니다. 이후 명령은 먼저 빌드한 Release 결과를 패키징합니다. 기존 포터블 ZIP을 교체하려면 `Build-Portable.ps1 -Force`를 사용합니다.
 
-결과는 `dist/SevenZipExtension-Setup-0.4.1.exe`와 `dist/SevenZipExtension-Portable-0.4.1.zip`입니다. 두 패키지에는 루트의 LICENSE, NOTICE.txt, SOURCE.txt, THIRD_PARTY_NOTICES.md를 함께 넣습니다. 새 버전을 배포할 때 SOURCE.txt의 태그·다운로드 링크도 해당 소스로 갱신하세요. 빌드는 현재 PC의 메뉴를 등록하지 않습니다. 배포물은 Git 이력 대신 GitHub Releases에 첨부합니다.
+결과는 `dist/SevenZipExtension-Setup-0.4.2.exe`와 `dist/SevenZipExtension-Portable-0.4.2.zip`입니다. 두 패키지에는 루트의 LICENSE, NOTICE.txt, SOURCE.txt, THIRD_PARTY_NOTICES.md를 함께 넣습니다. 새 버전을 배포할 때 SOURCE.txt의 태그·다운로드 링크도 해당 소스로 갱신하세요. 빌드는 현재 PC의 메뉴를 등록하지 않습니다. 배포물은 Git 이력 대신 GitHub Releases에 첨부합니다.
 
 ## 검증 스크립트
 
@@ -32,6 +32,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Portable
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Integration.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Options.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Portable.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-NativeProgress.ps1
 ```
 
 포터블 검사는 `Build-Portable.ps1`의 `.tools/portable-build.json`을 사용하며 격리된 HKCU 테스트 경로에서 등록 로직을 검사합니다. `Test-ElevatedRuntime.ps1`은 실제 관리자 토큰 거부를 확인하기 위해 UAC를 사용합니다.
@@ -41,3 +42,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Portable.
 `Install-Menu.ps1`과 `Uninstall-Menu.ps1`은 개발용 등록 보조 스크립트입니다. 배포 사용자는 릴리스 설치 프로그램이나 포터블의 등록·해제 CMD를 사용하세요.
 
 한글을 포함하는 Windows PowerShell 5 스크립트의 UTF-8 BOM을 유지합니다. 빌드 통신이 제한되는 환경에서는 일반 PowerShell에서 실행하세요.
+
+Test-NativeProgress.ps1은 테스트 전용 파일로 실제 7-Zip GUI 진행률·암호·취소·오류 정리를 확인합니다. 테스트가 시작한 7zG 자식 프로세스의 창만 조작하며 실제 메뉴 등록은 변경하지 않습니다. 화면에 테스트 창이 잠시 나타날 수 있습니다.

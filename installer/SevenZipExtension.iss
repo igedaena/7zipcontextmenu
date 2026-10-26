@@ -12,7 +12,7 @@
 ; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE
 ; or https://www.gnu.org/licenses/ for the complete license.
 
-#define AppVersion "0.4.1"
+#define AppVersion "0.4.2"
 #ifndef ProjectRoot
   #define ProjectRoot ".."
 #endif

@@ -85,12 +85,12 @@ namespace SevenZipContextMenu
             Add(basic, 16, "압축파일 열기");
             Add(basic, 32, "형식을 지정해 열기 ▶");
             Add(basic, 64, "압축 풀기… (7-Zip 대화상자)");
-            Add(basic, 128, "여기에 풀기");
+            Add(basic, 128, "여기에 압축 풀기");
             Add(basic, 2, "파일명 폴더에 풀기 / 각각 파일명 폴더에 풀기");
             Add(basic, 256, "압축파일 테스트");
             Add(basic, 512, "압축파일에 추가… (7-Zip 대화상자)");
-            Add(basic, 1024, "ZIP으로 압축하기 (여러 항목은 하나로)");
-            Add(basic, 2048, "7z로 압축하기 (여러 항목은 하나로)");
+            Add(basic, 1024, "\"이름.zip\" 에 추가 (선택 항목을 하나로)");
+            Add(basic, 2048, "\"이름.7z\" 에 추가 (선택 항목을 하나로)");
             Add(basic, 4096, "CRC / SHA ▶");
             layout.Controls.Add(Group("기본 기능", basic));
             var extension = CheckList();

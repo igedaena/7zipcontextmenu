@@ -75,13 +75,26 @@ try {
             }
         }
         # Bad settings fall back to defaults in the DLL, not an empty menu.
+        $preview = Join-Path $testRoot 'preview.txt'; [IO.File]::WriteAllText($preview,'preview')
+        [IO.File]::WriteAllText((Join-Path $testRoot 'preview.zip'),'existing ZIP')
+        [void][IO.Directory]::CreateDirectory((Join-Path $testRoot 'preview (2).zip'))
+        [IO.File]::WriteAllText((Join-Path $testRoot 'preview.7z'),'existing 7z')
+        $key.SetValue('OptionsV1',0x31fff,[Microsoft.Win32.RegistryValueKind]::DWord)
+        & $probe $dll options-direct-icons-preview 0 $preview
+        if ($LASTEXITCODE -ne 0) { throw 'Output filename preview/collision check failed' }
+        $count++
+        $folderPreview = Join-Path $testRoot 'preview-folder'
+        [void][IO.Directory]::CreateDirectory($folderPreview)
+        & $probe $dll options-direct-icons-folder-preview 0 ($folderPreview+'\')
+        if ($LASTEXITCODE -ne 0) { throw 'Folder output preview with trailing separator failed' }
+        $count++
         $key.SetValue('OptionsV1','invalid',[Microsoft.Win32.RegistryValueKind]::String)
         & $probe $dll compress 0 $plain
         if ($LASTEXITCODE -ne 0) { throw 'Invalid-setting fallback failed' }
     }
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    [pscustomobject]@{Success=$true; PackageVersion='0.4.1'; MenuScenarios=$count; BothArchitectures=$true; SettingsUi=$true; NativeCommandArguments=$true; RuntimeIsAdministrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); TestRoot=$testRoot; PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\options-test-results.json') -Encoding UTF8
+    [pscustomobject]@{Success=$true; PackageVersion='0.4.2'; MenuScenarios=$count; BothArchitectures=$true; SettingsUi=$true; NativeCommandArguments=$true; RuntimeIsAdministrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); TestRoot=$testRoot; PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\options-test-results.json') -Encoding UTF8
 } finally {
     if ($valueExisted) { $key.SetValue('OptionsV1',$savedValue,$savedKind) } else { $key.DeleteValue('OptionsV1',$false) }
     $empty = $key.GetValueNames().Count -eq 0 -and $key.GetSubKeyNames().Count -eq 0

@@ -9,9 +9,9 @@
 | Git 저장소 | `assets/sevenzip-extension.ico`, `assets/sevenzip-extension.png`, `assets/sevenzip-extension-source.png`, `assets/README.md` | 프로그램 아이콘과 재생성 원본 |
 | Git 저장소 | `README.md`, `THIRD_PARTY_NOTICES.md`, `docs/BUILD.md`, `docs/RELEASES.md`, `docs/DISTRIBUTION.md` | 사용자·개발·배포 안내 |
 | Git 저장소 및 설치형·포터블 | `LICENSE`, `NOTICE.txt`, `SOURCE.txt` | GPL-3.0-or-later 전문·고지 및 해당 버전 소스 다운로드 안내 |
-| v0.4.1 릴리스 | `SevenZipExtension-Setup-0.4.1.exe` | 공용 설치형 |
-| v0.4.1 릴리스 | `SevenZipExtension-Portable-0.4.1.zip` | 현재 사용자 등록형 포터블 |
-| v0.4.1 릴리스 | `SHA256SUMS.txt` | 위 두 파일의 무결성 확인 |
+| v0.4.2 릴리스 | `SevenZipExtension-Setup-0.4.2.exe` | 공용 설치형 |
+| v0.4.2 릴리스 | `SevenZipExtension-Portable-0.4.2.zip` | 현재 사용자 등록형 포터블 |
+| v0.4.2 릴리스 | `SHA256SUMS.txt` | 위 두 파일의 무결성 확인 |
 
 ## 업로드하지 않는 항목
 

@@ -131,12 +131,13 @@ int wmain(int argc, wchar_t** argv)
                     Check(verbs.insert(verb).second, "Unique canonical verbs");
                     if (std::string(verb) == "SevenZipExt.QuickZip" || std::string(verb) == "SevenZipExt.Quick7z") {
                         const bool zip = std::string(verb) == "SevenZipExt.QuickZip";
-                        const bool archive = paths.size() == 1 && paths[0].ends_with(L".zip") && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
-                        const std::wstring expected = paths.size() > 1 ? (zip ? L"하나의 ZIP으로 압축하기" : L"하나의 7z로 압축하기")
-                            : archive ? (zip ? L"압축파일을 ZIP으로 감싸기" : L"압축파일을 7z로 감싸기")
-                            : (zip ? L"ZIP으로 압축하기" : L"7z로 압축하기");
-                        wchar_t title[256]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 256, MF_BYPOSITION);
-                        Check(std::wstring(title) == expected, "Quick compression label matches selection");
+                        wchar_t title[1024]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 1024, MF_BYPOSITION);
+                        const std::wstring label(title);
+                        Check(label.starts_with(L"\"") && label.ends_with(zip ? L".zip\" 에 추가" : L".7z\" 에 추가"), "7-Zip naming with actual archive target");
+                        if (mode.find(L"folder-preview") != std::wstring::npos)
+                            Check(label == (zip ? L"\"preview-folder.zip\" 에 추가" : L"\"preview-folder.7z\" 에 추가"), "Folder trailing separator keeps its actual name");
+                        else if (mode.find(L"preview") != std::wstring::npos)
+                            Check(label == (zip ? L"\"preview (3).zip\" 에 추가" : L"\"preview (2).7z\" 에 추가"), "Menu skips existing files and folders");
                     }
                 }
             };
