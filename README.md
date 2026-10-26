@@ -73,4 +73,8 @@ Windows 11 탐색기에서는 **더 많은 옵션 표시** 안에서 사용합�
 - [저장소 포함·제외 기준](docs/DISTRIBUTION.md)
 - [외부 구성 요소와 아이콘 안내](THIRD_PARTY_NOTICES.md)
 
-프로젝트 라이선스는 아직 선택하지 않았으며 LICENSE 파일도 추가하지 않았습니다.
+## 라이선스
+
+Copyright (C) 2026 igedaena. **GNU General Public License version 3 or later (`GPL-3.0-or-later`)**로 배포합니다. 사용·수정·재배포할 수 있으며, 배포할 때는 GPL 조건과 해당 소스 제공 의무를 따라야 합니다. 법이 허용하는 범위에서 보증하지 않습니다.
+
+[라이선스 전문](LICENSE), [저작권·배포 고지](NOTICE.txt), [해당 버전 소스 안내](SOURCE.txt)를 확인하세요. 설치형과 포터블에도 이 문서를 동봉합니다. 프로젝트의 저작권 라이선스는 외부 프로그램의 라이선스나 상표 사용권을 대신하지 않습니다.

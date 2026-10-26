@@ -11,12 +11,12 @@
 
 ## 배포 파일
 
-[v0.4.1 다운로드](https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.1). 빌드 시각과 환경에 따라 재빌드한 파일의 해시는 달라질 수 있습니다. 아래는 기존 검증 배포물의 해시입니다.
+[v0.4.1 다운로드](https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.1). 빌드 시각과 환경에 따라 재빌드한 파일의 해시는 달라질 수 있습니다. 아래는 GPL 고지 동봉 후 다시 패키징한 공개 배포물의 해시입니다.
 
 | 파일 | 바이트 | SHA-256 |
 | --- | ---: | --- |
-| SevenZipExtension-Setup-0.4.1.exe | 2402708 | `734FC38221138E64AE1ABB73DDA47DC79F9F0ED4C69A8052A776AD5B9EAA2EE1` |
-| SevenZipExtension-Portable-0.4.1.zip | 485024 | `26F1891CA70A2E833C82467EE9E9A6B81240F6F3C050BD33FB103AD7776EA4E9` |
+| SevenZipExtension-Setup-0.4.1.exe | 2427077 | `A27902B8098DE8D4D0FACB4B5A392B05BBEFF7660E108EB249F030B67F6A33FC` |
+| SevenZipExtension-Portable-0.4.1.zip | 502319 | `C8EF7428DAF446432A458B57F29B1F6364B818A387EEBC03B5D5918D49934945` |
 
 ```powershell
 Get-FileHash .\SevenZipExtension-Setup-0.4.1.exe -Algorithm SHA256
@@ -27,6 +27,10 @@ Get-FileHash .\SevenZipExtension-Portable-0.4.1.zip -Algorithm SHA256
 
 기존 검증에서 x64/Win32 Release, 옵션 110개 시나리오, 통합 26개, 실제 관리자 토큰 차단과 일반 사용자 대조를 확인했습니다. 포터블 격리 검사 31개와 폴더 이동 후 ZIP 생성도 확인했습니다. 사용자가 설치·제거·옵션 및 포터블 정상 동작을 확인했습니다.
 
-해당 배포물의 당시 Kaspersky 검사 결과는 탐지 0입니다. 과거 다른 빌드에서 발생한 휴리스틱 탐지의 오탐 확정 판정은 받지 않았으며, 새 파일의 검사 결과로 그 판정을 대신하지 않습니다. 이번 저장소 업로드를 위해 바이너리를 다시 빌드하거나 설치 검사를 반복하지 않았습니다.
+해당 배포물의 당시 Kaspersky 검사 결과는 탐지 0입니다. 과거 다른 빌드에서 발생한 휴리스틱 탐지의 오탐 확정 판정은 받지 않았으며, 새 파일의 검사 결과로 그 판정을 대신하지 않습니다. GPL 공개 준비에서는 기능 DLL·실행기를 다시 빌드하지 않고 라이선스와 소스 안내를 추가해 설치형·포터블을 다시 패키징했습니다. 새 패키지의 Kaspersky 검사에서 내부 포함 29개 모두 ok, 탐지·의심·오류 0을 확인했습니다. 실제 설치·제거 검사는 반복하지 않았습니다.
 
 네트워크·긴 경로·일부 특수 형식은 추가 검증이 필요하며 링크·연결 지점은 지원하지 않습니다. 상세 사용 범위는 [README](../README.md)를 확인하세요.
+
+## GPL 공개 배포 정리
+
+GNU GPL 버전 3 또는 이후 버전으로 배포합니다. LICENSE, NOTICE.txt, SOURCE.txt와 외부 구성 요소 안내를 두 배포물에 동봉했습니다. 기능 DLL·실행기는 이전 검증본과 SHA-256이 같습니다. 비공개 준비 단계의 v0.4.1 태그를 라이선스 반영 소스에 맞춰 정리했습니다. 해당 버전 소스 ZIP은 릴리스 페이지의 Source code와 SOURCE.txt의 링크로 받을 수 있습니다.

@@ -34,3 +34,8 @@ DLL이 사용 중이면 폴더 삭제가 잠길 수 있습니다. 파일관리�
 - 단일 압축 파일의 감싸기는 원본 압축 파일을 새 압축 파일 안에 넣는 동작
 
 등록 해제 후에도 개인 옵션은 보존됩니다.
+
+라이선스: GPL-3.0-or-later (GNU GPL 버전 3 또는 이후 버전).
+저작권·무보증 안내: NOTICE.txt / 라이선스 전문: LICENSE
+이 버전의 소스와 빌드 방법: SOURCE.txt
+https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.1

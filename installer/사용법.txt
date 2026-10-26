@@ -56,3 +56,8 @@ FreeCommander XE 또는 탐색기의 기존 우클릭 메뉴에서 사용하세�
 Visual Studio, Windows SDK, CMake, Visual C++ 재배포 패키지는 필요하지 않습니다.
 Windows x64 공용 설치용이며 설치·제거 시 관리자 승인이 필요합니다.
 작업 목록은 사용자별 AppData\Local\SevenZipContextMenu\Requests에 저장합니다.
+
+라이선스: GPL-3.0-or-later (GNU GPL 버전 3 또는 이후 버전).
+저작권·무보증 안내: NOTICE.txt / 라이선스 전문: LICENSE
+이 버전의 소스와 빌드 방법: SOURCE.txt
+https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.1

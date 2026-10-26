@@ -1,4 +1,18 @@
-﻿#define AppVersion "0.4.1"
+﻿; Copyright (C) 2026 igedaena
+; SPDX-License-Identifier: GPL-3.0-or-later
+;
+; This file is part of 7-Zip Extension Menu.
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE
+; or https://www.gnu.org/licenses/ for the complete license.
+
+#define AppVersion "0.4.1"
 #ifndef ProjectRoot
   #define ProjectRoot ".."
 #endif
@@ -30,6 +44,7 @@ RestartApplications=no
 ChangesAssociations=yes
 UsePreviousAppDir=yes
 VersionInfoDescription=7-Zip 확장 설치 프로그램
+LicenseFile={#ProjectRoot}\LICENSE
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
@@ -43,10 +58,15 @@ Source: "build\x64\Release\SevenZipContextWorker.exe"; DestDir: "{app}"; Flags: 
 Source: "build\x64\Release\SevenZipContextWorker.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\sevenzip-extension.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "installer\사용법.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "NOTICE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "SOURCE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\7-Zip 확장 설정"; Filename: "{app}\SevenZipContextWorker.exe"; Parameters: "--settings"; IconFilename: "{app}\SevenZipContextWorker.exe"
 Name: "{group}\사용 안내"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\사용법.txt"""; IconFilename: "{app}\SevenZipContextWorker.exe"
+Name: "{group}\라이선스 및 소스 안내"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\NOTICE.txt"""; IconFilename: "{app}\SevenZipContextWorker.exe"
 Name: "{group}\7-Zip 확장 제거"; Filename: "{uninstallexe}"; IconFilename: "{app}\SevenZipContextWorker.exe"
 
 [Registry]

@@ -1,0 +1,28 @@
+7-Zip Extension Menu / 7-Zip 확장 메뉴 0.4.1
+Copyright (C) 2026 igedaena
+SPDX-License-Identifier: GPL-3.0-or-later
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program, in the file LICENSE. If not, see
+https://www.gnu.org/licenses/.
+
+Complete corresponding source and build instructions for this release:
+https://github.com/igedaena/7zipcontextmenu/tree/v0.4.1
+https://github.com/igedaena/7zipcontextmenu/archive/refs/tags/v0.4.1.zip
+
+See SOURCE.txt for source access and THIRD_PARTY_NOTICES.md for the
+separate terms and provenance of external components and artwork.
+
+이 프로그램은 GNU GPL 버전 3 또는 이후 버전으로 배포합니다.
+라이선스 전문은 LICENSE, 해당 버전 소스와 빌드 안내는 SOURCE.txt를
+확인하세요. 법이 허용하는 범위에서 보증하지 않습니다.
