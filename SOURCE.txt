@@ -1,14 +1,18 @@
-7-Zip Extension Menu 0.4.3 - Local Development Build
+7-Zip Extension Menu 0.4.3 - Development Build Source
 License: GPL-3.0-or-later
 
-Public repository (0.4.3 has not been pushed or released yet):
+Public repository (the packaged GitHub release remains v0.4.2):
 https://github.com/igedaena/7zipcontextmenu
 
-The matching source for this local build is the local 0.4.3 Git checkout,
-including LICENSE and the build/install scripts. The public v0.4.2 source
-does not contain these changes. Before distributing this build, provide
-its complete corresponding source and update this notice with its source
-commit/tag and download location.
+Complete corresponding source for the tested 0.4.3 code, including LICENSE
+and the build/install scripts:
+https://github.com/igedaena/7zipcontextmenu/tree/0aa81cbe3362d920422e8dcffbab3d74b1efb9b7
+https://github.com/igedaena/7zipcontextmenu/archive/0aa81cbe3362d920422e8dcffbab3d74b1efb9b7.zip
+
+The v0.4.2 tag does not contain these changes. This source revision is a
+development build; a v0.4.3 packaged release has not been published yet.
+When publishing a packaged release, update the bundled notice to point
+to that release's final source revision or tag.
 
 Build instructions: docs/BUILD.md in the source archive.
 Native source: src/shell; managed source: src/worker.
