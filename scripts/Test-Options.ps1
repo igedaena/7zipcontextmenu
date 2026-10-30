@@ -135,6 +135,32 @@ try {
             }
         }
         $key.DeleteValue('MenuOrderV1',$false)
+        $openSelections = @(@{Paths=@($archive);Visible=$true})
+        foreach ($name in @('open.7z','open.rar','open.tar.gz','open.tgz','open.zip.001','OPEN.ZIP')) {
+            $openPath = Join-Path $testRoot $name
+            [IO.File]::WriteAllText($openPath,'menu fixture')
+            $openSelections += @{Paths=@($openPath);Visible=$true}
+        }
+        $ordinaryExe = Join-Path $testRoot 'ordinary.exe'; [IO.File]::WriteAllText($ordinaryExe,'ordinary file')
+        $archiveNamedFolder = Join-Path $testRoot 'folder.zip'; [void][IO.Directory]::CreateDirectory($archiveNamedFolder)
+        $openSelections += @(
+            @{Paths=@($plain);Visible=$false}, @{Paths=@($ordinaryExe);Visible=$false},
+            @{Paths=@($testRoot);Visible=$false}, @{Paths=@($archiveNamedFolder);Visible=$false},
+            @{Paths=@($archive,(Join-Path $testRoot 'open.7z'));Visible=$false},
+            @{Paths=@($plain,$archive);Visible=$false})
+        foreach ($layout in @('direct','cascade')) {
+            foreach ($openOption in @(@{Value=16;Name='basic-only'},@{Value=32;Name='format-only'},@{Value=48;Name='both'})) {
+                $flags = 0x20000 -bor $openOption.Value
+                if ($layout -eq 'direct') { $flags = $flags -bor 0x10000 }
+                $key.SetValue('OptionsV1',$flags,[Microsoft.Win32.RegistryValueKind]::DWord)
+                foreach ($openSelection in $openSelections) {
+                    $visibility = if ($openSelection.Visible) {'visible'} else {'other'}
+                    & $probe $dll ('options-'+$layout+'-icons-open-'+$visibility+'-'+$openOption.Name) 0 @($openSelection.Paths)
+                    if ($LASTEXITCODE -ne 0) { throw "Basic Open visibility failed: $architecture $layout $($openOption.Name)" }
+                    $count++
+                }
+            }
+        }
         $key.SetValue('OptionsV1','invalid',[Microsoft.Win32.RegistryValueKind]::String)
         & $probe $dll compress 0 $plain
         if ($LASTEXITCODE -ne 0) { throw 'Invalid-setting fallback failed' }

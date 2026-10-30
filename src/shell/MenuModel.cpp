@@ -172,6 +172,7 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
         if ((op == Operation::CompressZip || op == Operation::Compress7z) && archivesOnly) continue;
         const bool singleFile = paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
         if ((op == Operation::Open || command.group == 1) && !singleFile) continue;
+        if (op == Operation::Open && !archivesOnly) continue;
         if (op == Operation::QuickZip || op == Operation::Quick7z) {
             command.title = QuickArchiveName(paths, op == Operation::QuickZip ? L".zip" : L".7z");
             if (command.title.empty()) continue;

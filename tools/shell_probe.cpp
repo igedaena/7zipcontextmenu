@@ -117,7 +117,7 @@ int wmain(int argc, wchar_t** argv)
             Check(SUCCEEDED(hr) && HRESULT_CODE(hr) > 0, "Options command allocation");
             if (!direct) Check(GetMenuItemCount(menu) == 1 && GetSubMenu(menu, 0), "Cascaded layout");
             else Check(off ? GetMenuItemCount(menu) == 1 :
-                (mode.find(L"dedupe-") != std::wstring::npos ? GetMenuItemCount(menu) >= 1 : GetMenuItemCount(menu) > 1), "Direct layout");
+                (mode.find(L"dedupe-") != std::wstring::npos || mode.find(L"open-") != std::wstring::npos ? GetMenuItemCount(menu) >= 1 : GetMenuItemCount(menu) > 1), "Direct layout");
             std::set<UINT> ids;
             std::set<std::string> verbs;
             std::function<void(HMENU)> inspect = [&](HMENU current) {
@@ -197,6 +197,15 @@ int wmain(int argc, wchar_t** argv)
             Check(ids.size() == static_cast<size_t>(HRESULT_CODE(hr)), "Exact command budget including popups");
             Check(verbs.contains("SevenZipExt.Settings") == !hidden, "Settings entry visibility");
             if (off) Check(verbs.size() == 1, "All commands hidden");
+            else if (mode.find(L"open-visible") != std::wstring::npos || mode.find(L"open-other") != std::wstring::npos) {
+                const bool basicEnabled = mode.find(L"-format-only") == std::wstring::npos;
+                const bool formatEnabled = mode.find(L"-basic-only") == std::wstring::npos;
+                const bool basicVisible = basicEnabled && mode.find(L"open-visible") != std::wstring::npos;
+                const bool formatVisible = formatEnabled && paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
+                Check(verbs.contains("SevenZipExt.Open") == basicVisible, "Basic Open requires one recognized archive and its checkbox");
+                Check(verbs.contains("SevenZipExt.OpenZip") == formatVisible, "Explicit Open As retains its independent single-file behavior");
+                Check(verbs.size() == 1U + (basicVisible ? 1U : 0U) + (formatVisible ? 8U : 0U), "Open filters leave the expected commands and settings");
+            }
             else if (mode.find(L"dedupe-") != std::wstring::npos) {
                 const bool both = mode.find(L"dedupe-both") != std::wstring::npos;
                 const bool each = mode.find(L"dedupe-each") != std::wstring::npos;
@@ -224,6 +233,8 @@ int wmain(int argc, wchar_t** argv)
                 Check(verbs.contains("SevenZipExt.HashSHA256") && verbs.contains("SevenZipExt.HashTest"), "Hash children");
                 Check(verbs.contains("SevenZipExt.QuickZip") && verbs.contains("SevenZipExt.AddDialog"), "Shared compression entries");
                 Check(verbs.contains("SevenZipExt.OpenZip") == (paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY)), "Open requires one file");
+                Check(verbs.contains("SevenZipExt.Open") == (paths.size() == 1 &&
+                    !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY) && paths[0].ends_with(L".zip")), "Basic Open is hidden for ordinary files and folders");
             }
             // Re-query the same COM object with the exact budget and then one fewer ID.
             UINT count = HRESULT_CODE(hr);
