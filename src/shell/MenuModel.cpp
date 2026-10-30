@@ -180,6 +180,17 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
             op == Operation::CompressZip || op == Operation::Compress7z)) command.title = L"각각 " + command.title;
         result.push_back(std::move(command));
     }
+    if (paths.size() == 1) {
+        // Prefer the visible output name, but keep the per-item command if its
+        // quick counterpart could not be built (for example, no unused name).
+        const auto has = [&](Operation operation) {
+            return std::any_of(result.begin(), result.end(), [&](const Command& command) { return command.operation == operation; });
+        };
+        const bool quickZip = has(Operation::QuickZip), quick7z = has(Operation::Quick7z);
+        std::erase_if(result, [&](const Command& command) {
+            return (command.operation == Operation::CompressZip && quickZip) || (command.operation == Operation::Compress7z && quick7z);
+        });
+    }
     const auto order = ReadMenuOrder();
     const auto rank = [&](DWORD option) { return std::find(order.begin(), order.end(), option) - order.begin(); };
     // Stable sorting preserves the order inside Open As / CRC menus; settings stays last.

@@ -116,7 +116,8 @@ int wmain(int argc, wchar_t** argv)
             } else {
             Check(SUCCEEDED(hr) && HRESULT_CODE(hr) > 0, "Options command allocation");
             if (!direct) Check(GetMenuItemCount(menu) == 1 && GetSubMenu(menu, 0), "Cascaded layout");
-            else Check(off ? GetMenuItemCount(menu) == 1 : GetMenuItemCount(menu) > 1, "Direct layout");
+            else Check(off ? GetMenuItemCount(menu) == 1 :
+                (mode.find(L"dedupe-") != std::wstring::npos ? GetMenuItemCount(menu) >= 1 : GetMenuItemCount(menu) > 1), "Direct layout");
             std::set<UINT> ids;
             std::set<std::string> verbs;
             std::function<void(HMENU)> inspect = [&](HMENU current) {
@@ -196,6 +197,27 @@ int wmain(int argc, wchar_t** argv)
             Check(ids.size() == static_cast<size_t>(HRESULT_CODE(hr)), "Exact command budget including popups");
             Check(verbs.contains("SevenZipExt.Settings") == !hidden, "Settings entry visibility");
             if (off) Check(verbs.size() == 1, "All commands hidden");
+            else if (mode.find(L"dedupe-") != std::wstring::npos) {
+                const bool both = mode.find(L"dedupe-both") != std::wstring::npos;
+                const bool each = mode.find(L"dedupe-each") != std::wstring::npos;
+                const bool quick = mode.find(L"dedupe-quick") != std::wstring::npos;
+                const bool splitZip = mode.find(L"dedupe-split-zip") != std::wstring::npos;
+                const bool split7z = mode.find(L"dedupe-split-7z") != std::wstring::npos;
+                bool archivesOnly = true;
+                for (const auto& path : paths) {
+                    const auto dot = path.find_last_of(L'.');
+                    if ((GetFileAttributesW(path.c_str()) & FILE_ATTRIBUTE_DIRECTORY) || dot == std::wstring::npos || path.substr(dot) != L".zip") archivesOnly = false;
+                }
+                const bool zipQuick = both || quick || splitZip;
+                const bool z7Quick = both || quick || split7z;
+                const bool zipEach = !archivesOnly && (both || each || split7z) && (paths.size() > 1 || !zipQuick);
+                const bool z7Each = !archivesOnly && (both || each || splitZip) && (paths.size() > 1 || !z7Quick);
+                Check(verbs.contains("SevenZipExt.QuickZip") == zipQuick, "Quick ZIP follows its own checkbox");
+                Check(verbs.contains("SevenZipExt.Quick7z") == z7Quick, "Quick 7z follows its own checkbox");
+                Check(verbs.contains("SevenZipExt.CompressZip") == zipEach, "Single-selection ZIP duplicate is hidden; multi/standalone command is preserved");
+                Check(verbs.contains("SevenZipExt.Compress7z") == z7Each, "Single-selection 7z duplicate is hidden; multi/standalone command is preserved");
+                Check(verbs.size() == 1U + zipQuick + z7Quick + zipEach + z7Each, "Only the selected compression commands and settings are present");
+            }
             else if (mode.find(L"filter") != std::wstring::npos) {
                 Check(verbs.size() == 2 && verbs.contains("SevenZipExt.Quick7z"), "One enabled command plus settings");
             } else {
@@ -222,7 +244,7 @@ int wmain(int argc, wchar_t** argv)
             HMENU refreshed = CreatePopupMenu();
             const auto refreshResult = context->QueryContextMenu(refreshed, 0, 100, 200, CMF_NORMAL);
             const bool refreshedLayout = direct ? GetSubMenu(refreshed, 0) != nullptr
-                : (off ? GetSubMenu(refreshed, 0) == nullptr : GetMenuItemCount(refreshed) > 1);
+                : static_cast<size_t>(GetMenuItemCount(refreshed)) == observed.size();
             const LSTATUS restored = RegSetValueExW(optionsKey, L"OptionsV1", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&original), sizeof(original));
             RegCloseKey(optionsKey); DestroyMenu(refreshed);
             Check(written == ERROR_SUCCESS && restored == ERROR_SUCCESS && SUCCEEDED(refreshResult) && refreshedLayout, "Same loaded handler picks up changed settings");

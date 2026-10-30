@@ -117,6 +117,24 @@ try {
             }
         }
         $key.DeleteValue('MenuOrderV1',$false)
+        foreach ($orderCase in @('default','reverse')) {
+            if ($orderCase -eq 'reverse') { $key.SetValue('MenuOrderV1',[string[]]@('4096','8','4','2048','1024','512','256','2','1','128','64','32','16'),[Microsoft.Win32.RegistryValueKind]::MultiString) }
+            foreach ($layout in @('direct','cascade')) {
+                foreach ($compressionCase in @(
+                    @{Value=0xc0c;Name='both'}, @{Value=0xc;Name='each'}, @{Value=0xc00;Name='quick'},
+                    @{Value=0x408;Name='split-zip'}, @{Value=0x804;Name='split-7z'}, @{Value=0;Name='neither'})) {
+                    $flags = 0x20000 -bor $compressionCase.Value
+                    if ($layout -eq 'direct') { $flags = $flags -bor 0x10000 }
+                    $key.SetValue('OptionsV1',$flags,[Microsoft.Win32.RegistryValueKind]::DWord)
+                    foreach ($selection in @(@($plain),@($archive),@($testRoot+'\'),@($plain,$archive),@($plain,$testRoot))) {
+                        & $probe $dll ('options-'+$layout+'-icons-order-'+$orderCase+'-dedupe-'+$compressionCase.Name) 0 @selection
+                        if ($LASTEXITCODE -ne 0) { throw "Compression deduplication failed: $architecture $layout $orderCase $($compressionCase.Name)" }
+                        $count++
+                    }
+                }
+            }
+        }
+        $key.DeleteValue('MenuOrderV1',$false)
         $key.SetValue('OptionsV1','invalid',[Microsoft.Win32.RegistryValueKind]::String)
         & $probe $dll compress 0 $plain
         if ($LASTEXITCODE -ne 0) { throw 'Invalid-setting fallback failed' }
