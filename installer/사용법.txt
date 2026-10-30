@@ -59,7 +59,7 @@ Windows x64 공용 설치용이며 설치·제거 시 관리자 승인이 필요
 라이선스: GPL-3.0-or-later (GNU GPL 버전 3 또는 이후 버전).
 저작권·무보증 안내: NOTICE.txt / 라이선스 전문: LICENSE
 이 버전의 소스와 빌드 방법: SOURCE.txt
-0.4.3은 로컬 개발 빌드이며 아직 공개 배포되지 않았습니다.
+https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.3
 
 압축·해제 진행률, 속도, 남은 시간과 암호 입력은 7-Zip 기본 창을 사용합니다.
 알아서 풀기·파일명 폴더에 풀기·각각 압축도 같은 방식입니다.

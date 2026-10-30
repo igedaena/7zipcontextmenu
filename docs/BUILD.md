@@ -22,7 +22,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Portable
 
 첫 명령은 공식 Inno Setup 7.1.0 설치기를 다운로드하고 서명을 확인해 프로젝트의 `.tools/InnoSetup`에 설치합니다. 기존 컴파일러가 있으면 재사용합니다. 이후 명령은 먼저 빌드한 Release 결과를 패키징합니다. 기존 포터블 ZIP을 교체하려면 `Build-Portable.ps1 -Force`를 사용합니다.
 
-결과는 `dist/SevenZipExtension-Setup-0.4.3.exe`와 `dist/SevenZipExtension-Portable-0.4.3.zip`입니다. 현재 0.4.3은 로컬 개발 빌드이며 공개 릴리스는 0.4.2입니다. 두 패키지에는 루트의 LICENSE, NOTICE.txt, SOURCE.txt, THIRD_PARTY_NOTICES.md를 함께 넣습니다. 새 버전을 배포할 때 SOURCE.txt의 태그·다운로드 링크도 해당 소스로 갱신하세요. 빌드는 현재 PC의 메뉴를 등록하지 않습니다. 배포물은 Git 이력 대신 GitHub Releases에 첨부합니다.
+결과는 `dist/SevenZipExtension-Setup-0.4.3.exe`와 `dist/SevenZipExtension-Portable-0.4.3.zip`입니다. 두 패키지에는 루트의 LICENSE, NOTICE.txt, SOURCE.txt, THIRD_PARTY_NOTICES.md를 함께 넣습니다. 새 버전을 배포할 때 SOURCE.txt의 태그·다운로드 링크도 해당 소스로 갱신하세요. 빌드는 현재 PC의 메뉴를 등록하지 않습니다. 배포물은 Git 이력 대신 GitHub Releases에 첨부합니다.
 
 ## 검증 스크립트
 
