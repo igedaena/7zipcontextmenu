@@ -13,7 +13,7 @@
 # or https://www.gnu.org/licenses/ for the complete license.
 
 cmake_minimum_required(VERSION 3.25)
-project(SevenZipContextMenu VERSION 0.4.2 LANGUAGES CXX RC)
+project(SevenZipContextMenu VERSION 0.4.3 LANGUAGES CXX RC)
 
 if(NOT WIN32 OR NOT MSVC)
     message(FATAL_ERROR "This project requires Windows and MSVC.")

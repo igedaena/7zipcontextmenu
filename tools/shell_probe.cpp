@@ -16,6 +16,7 @@
 #include <shlobj.h>
 #include <shellapi.h>
 #include <atomic>
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <functional>
@@ -134,6 +135,24 @@ int wmain(int argc, wchar_t** argv)
                         wchar_t title[1024]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 1024, MF_BYPOSITION);
                         const std::wstring label(title);
                         Check(label.starts_with(L"\"") && label.ends_with(zip ? L".zip\" 에 추가" : L".7z\" 에 추가"), "7-Zip naming with actual archive target");
+                        if (mode.find(L"long-name") != std::wstring::npos) {
+                            std::wstring visible;
+                            for (size_t offset = 0; offset < label.size(); ++offset) {
+                                visible += label[offset];
+                                if (label[offset] == L'&') { Check(offset + 1 < label.size() && label[offset + 1] == L'&', "Ampersands stay escaped after shortening"); ++offset; }
+                            }
+                            size_t scalars = 0;
+                            for (size_t offset = 0; offset < visible.size(); ++offset) {
+                                const auto ch = visible[offset];
+                                if (ch >= 0xd800 && ch <= 0xdbff) {
+                                    Check(offset + 1 < visible.size() && visible[offset + 1] >= 0xdc00 && visible[offset + 1] <= 0xdfff, "No split surrogate pairs"); ++offset;
+                                } else Check(ch < 0xdc00 || ch > 0xdfff, "No orphan low surrogate");
+                                ++scalars;
+                            }
+                            Check(visible.find(L"...") != std::wstring::npos && scalars == 67, "Long filename is shortened to 60 Unicode scalars plus quotes and suffix");
+                            Check(visible.ends_with(zip ? L" (3).zip\" 에 추가" : L" (2).7z\" 에 추가"), "Short label keeps extension and collision number");
+                            Check(visible.starts_with(L"\"앞앞앞"), "Short label keeps the beginning of the filename");
+                        }
                         if (mode.find(L"folder-preview") != std::wstring::npos)
                             Check(label == (zip ? L"\"preview-folder.zip\" 에 추가" : L"\"preview-folder.7z\" 에 추가"), "Folder trailing separator keeps its actual name");
                         else if (mode.find(L"preview") != std::wstring::npos)
@@ -142,6 +161,38 @@ int wmain(int argc, wchar_t** argv)
                 }
             };
             inspect(menu);
+            HMENU top = direct ? menu : GetSubMenu(menu, 0);
+            const std::vector<std::pair<std::string, DWORD>> optionVerbs{
+                {"Open",16}, {"ExtractDialog",64}, {"ExtractHere",128}, {"SmartExtract",1},
+                {"ExtractToFolder",2}, {"Test",256}, {"AddDialog",512}, {"QuickZip",1024},
+                {"Quick7z",2048}, {"CompressZip",4}, {"Compress7z",8}, {"Settings",0}};
+            std::vector<DWORD> observed;
+            for (int n = 0; n < GetMenuItemCount(top); ++n) {
+                MENUITEMINFOW item{}; item.cbSize = sizeof(item); item.fMask = MIIM_ID | MIIM_SUBMENU;
+                Check(GetMenuItemInfoW(top, static_cast<UINT>(n), TRUE, &item) != FALSE, "Read ordered top-level item");
+                if (item.hSubMenu) {
+                    wchar_t text[128]{}; GetMenuStringW(top, static_cast<UINT>(n), text, 128, MF_BYPOSITION);
+                    observed.push_back(std::wstring(text) == L"형식을 지정해 열기" ? 32U : 4096U);
+                } else {
+                    char verb[128]{}; Check(SUCCEEDED(context->GetCommandString(item.wID - 100, GCS_VERBA, nullptr, verb, 128)), "Ordered item canonical verb");
+                    bool found = false;
+                    for (const auto& entry : optionVerbs) if (std::string(verb) == "SevenZipExt." + entry.first) {
+                        observed.push_back(entry.second); found = true; break;
+                    }
+                    Check(found, "Known ordered command");
+                }
+            }
+            std::vector<DWORD> expectedOrder{16,32,64,128,1,2,256,512,1024,2048,4,8,4096};
+            if (mode.find(L"order-reverse") != std::wstring::npos) std::reverse(expectedOrder.begin(), expectedOrder.end());
+            if (mode.find(L"order-partial") != std::wstring::npos) {
+                expectedOrder.erase(std::find(expectedOrder.begin(), expectedOrder.end(), DWORD{4096}));
+                expectedOrder.erase(std::find(expectedOrder.begin(), expectedOrder.end(), DWORD{2}));
+                expectedOrder.insert(expectedOrder.begin(), {4096, 2});
+            }
+            expectedOrder.push_back(0);
+            std::vector<DWORD> expected;
+            for (const auto id : expectedOrder) if (std::find(observed.begin(), observed.end(), id) != observed.end()) expected.push_back(id);
+            Check(observed == expected, "Visible menu follows saved/default order; child menus move as a unit; settings stays last");
             Check(ids.size() == static_cast<size_t>(HRESULT_CODE(hr)), "Exact command budget including popups");
             Check(verbs.contains("SevenZipExt.Settings") == !hidden, "Settings entry visibility");
             if (off) Check(verbs.size() == 1, "All commands hidden");

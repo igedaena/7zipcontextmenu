@@ -16,7 +16,7 @@
 param([switch]$Force)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
-$version='0.4.2'
+$version='0.4.3'
 $stage=Join-Path $projectRoot ('out\portable-'+[Guid]::NewGuid().ToString('N').Substring(0,8)+'\SevenZipExtension-Portable-'+$version)
 foreach($directory in @($stage,(Join-Path $stage 'x64'),(Join-Path $stage 'x86'),(Join-Path $stage 'scripts'))) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\x64\Release\SevenZipContextMenu.dll') -Destination (Join-Path $stage 'x64')

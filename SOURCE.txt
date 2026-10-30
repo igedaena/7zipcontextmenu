@@ -1,13 +1,14 @@
-7-Zip Extension Menu 0.4.2 - Complete Corresponding Source
+7-Zip Extension Menu 0.4.3 - Local Development Build
 License: GPL-3.0-or-later
 
-Repository and release:
+Public repository (0.4.3 has not been pushed or released yet):
 https://github.com/igedaena/7zipcontextmenu
-https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.2
 
-Source for this version, including LICENSE and build/install scripts:
-https://github.com/igedaena/7zipcontextmenu/tree/v0.4.2
-https://github.com/igedaena/7zipcontextmenu/archive/refs/tags/v0.4.2.zip
+The matching source for this local build is the local 0.4.3 Git checkout,
+including LICENSE and the build/install scripts. The public v0.4.2 source
+does not contain these changes. Before distributing this build, provide
+its complete corresponding source and update this notice with its source
+commit/tag and download location.
 
 Build instructions: docs/BUILD.md in the source archive.
 Native source: src/shell; managed source: src/worker.
@@ -18,9 +19,9 @@ Visual Studio Build Tools, Windows SDK, CMake and Inno Setup are external
 general-purpose build tools. Windows/.NET and 7-Zip are separate runtime
 requirements. They are not included in these release packages.
 
-Version 0.4.2 uses native 7-Zip progress/password dialogs for interactive
-extension jobs and displays the planned output name in quick-compression menus.
+Version 0.4.3 adds editable menu ordering and shortens long displayed archive
+names without changing actual output filenames. Interactive extension jobs
+continue to use native 7-Zip progress/password dialogs.
 
-The source links are available without charge. Keep this notice and the
-license when redistributing; provide corresponding source as required by
+Keep this notice and the license when redistributing; provide corresponding source as required by
 the GPL. See LICENSE for the complete terms.

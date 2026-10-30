@@ -17,6 +17,22 @@
 #include <cwctype>
 #include <filesystem>
 
+// Count Unicode scalars so truncation never splits a UTF-16 surrogate pair.
+static std::wstring ShortArchiveLabel(const std::wstring& name)
+{
+    std::vector<size_t> boundaries{0};
+    for (size_t i = 0; i < name.size();) {
+        const auto first = name[i++];
+        if (first >= 0xd800 && first <= 0xdbff && i < name.size() && name[i] >= 0xdc00 && name[i] <= 0xdfff) ++i;
+        boundaries.push_back(i);
+    }
+    constexpr size_t limit = 60;
+    const auto length = boundaries.size() - 1;
+    if (length <= limit) return name;
+    constexpr size_t head = 34, tail = limit - head - 3;
+    return name.substr(0, boundaries[head]) + L"..." + name.substr(boundaries[length - tail]);
+}
+
 // Keep the displayed output name consistent with Engine.QuickArchivePath.
 static std::wstring QuickArchiveName(const std::vector<std::wstring>& paths, const wchar_t* extension)
 {
@@ -37,7 +53,7 @@ static std::wstring QuickArchiveName(const std::vector<std::wstring>& paths, con
         const auto name = stem + (i == 1 ? L"" : L" (" + std::to_wstring(i) + L")") + extension;
         if (GetFileAttributesW((parent / name).c_str()) != INVALID_FILE_ATTRIBUTES) continue;
         std::wstring escaped;
-        for (const auto ch : name) { escaped += ch; if (ch == L'&') escaped += ch; }
+        for (const auto ch : ShortArchiveLabel(name)) { escaped += ch; if (ch == L'&') escaped += ch; }
         return L"\"" + escaped + L"\" 에 추가";
     }
     return {};
@@ -108,6 +124,35 @@ std::vector<Command> CommandCatalog()
     };
 }
 
+std::vector<DWORD> ReadMenuOrder()
+{
+    // Stable option IDs, shared with OptionsStore.DefaultOrder. Child menus move as a unit.
+    const std::vector<DWORD> defaults{16, 32, 64, 128, 1, 2, 256, 512, 1024, 2048, 4, 8, 4096};
+    std::vector<DWORD> order;
+    wchar_t stored[1024]{};
+    DWORD bytes = sizeof(stored);
+    if (RegGetValueW(HKEY_CURRENT_USER, kOptionsKey, L"MenuOrderV1",
+        RRF_RT_REG_MULTI_SZ | RRF_SUBKEY_WOW6464KEY, nullptr, stored, &bytes) == ERROR_SUCCESS) {
+        // Bound every entry even for externally written or malformed registry data.
+        const size_t end = (std::min)(static_cast<size_t>(bytes) / sizeof(wchar_t), std::size(stored));
+        for (size_t start = 0; start < end && stored[start];) {
+            size_t finish = start;
+            while (finish < end && stored[finish]) ++finish;
+            if (finish == end) break;
+            const std::wstring token(stored + start, finish - start);
+            for (const auto id : defaults) {
+                if (token == std::to_wstring(id) && std::find(order.begin(), order.end(), id) == order.end()) {
+                    order.push_back(id); break;
+                }
+            }
+            start = finish + 1;
+        }
+    }
+    for (const auto id : defaults)
+        if (std::find(order.begin(), order.end(), id) == order.end()) order.push_back(id);
+    return order;
+}
+
 std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD options)
 {
     if (paths.empty()) return {};
@@ -135,5 +180,11 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
             op == Operation::CompressZip || op == Operation::Compress7z)) command.title = L"각각 " + command.title;
         result.push_back(std::move(command));
     }
+    const auto order = ReadMenuOrder();
+    const auto rank = [&](DWORD option) { return std::find(order.begin(), order.end(), option) - order.begin(); };
+    // Stable sorting preserves the order inside Open As / CRC menus; settings stays last.
+    std::stable_sort(result.begin(), result.end(), [&](const Command& left, const Command& right) {
+        return rank(left.option) < rank(right.option);
+    });
     return result;
 }

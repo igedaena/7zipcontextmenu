@@ -24,10 +24,14 @@ $optionsKeyExisted = $null -ne $previousKey
 $optionsValueExisted = $previousKey -and $previousKey.GetValueNames() -contains 'OptionsV1'
 $optionsSavedValue = $null; $optionsSavedKind = $null
 if ($optionsValueExisted) { $optionsSavedValue = $previousKey.GetValue('OptionsV1'); $optionsSavedKind = $previousKey.GetValueKind('OptionsV1') }
+$menuOrderExisted = $previousKey -and $previousKey.GetValueNames() -contains 'MenuOrderV1'
+$menuOrderSaved = $null; $menuOrderKind = $null
+if ($menuOrderExisted) { $menuOrderSaved = $previousKey.GetValue('MenuOrderV1'); $menuOrderKind = $previousKey.GetValueKind('MenuOrderV1') }
 if ($previousKey) { $previousKey.Dispose() }
 $optionsKey = $optionsHive.CreateSubKey($optionsKeyPath)
 try {
 $optionsKey.SetValue('OptionsV1',0x2000f,[Microsoft.Win32.RegistryValueKind]::DWord)
+$optionsKey.DeleteValue('MenuOrderV1',$false)
 $runId = [Guid]::NewGuid().ToString('N').Substring(0,8)
 $testRoot = Join-Path $projectRoot ('.review\integration-' + $runId)
 $appRoot = Join-Path $projectRoot ('out\test-' + $runId)
@@ -205,6 +209,7 @@ Assert-Check (Test-Path -LiteralPath $singleFile) 'Original files remain present
 Write-Output ("Integration checks passed: " + $checks.Count)
 } finally {
     if ($optionsValueExisted) { $optionsKey.SetValue('OptionsV1',$optionsSavedValue,$optionsSavedKind) } else { $optionsKey.DeleteValue('OptionsV1',$false) }
+    if ($menuOrderExisted) { $optionsKey.SetValue('MenuOrderV1',$menuOrderSaved,$menuOrderKind) } else { $optionsKey.DeleteValue('MenuOrderV1',$false) }
     $optionsKeyEmpty = $optionsKey.GetValueNames().Count -eq 0 -and $optionsKey.GetSubKeyNames().Count -eq 0
     $optionsKey.Dispose()
     if (-not $optionsKeyExisted -and $optionsKeyEmpty) { $optionsHive.DeleteSubKey($optionsKeyPath,$false) }

@@ -25,9 +25,13 @@ $keyExisted = $null -ne $existing
 $valueExisted = $existing -and $existing.GetValueNames() -contains 'OptionsV1'
 $savedValue = $null; $savedKind = $null
 if ($valueExisted) { $savedValue = $existing.GetValue('OptionsV1'); $savedKind = $existing.GetValueKind('OptionsV1') }
+$orderExisted = $existing -and $existing.GetValueNames() -contains 'MenuOrderV1'
+$savedOrder = $null; $savedOrderKind = $null
+if ($orderExisted) { $savedOrder = $existing.GetValue('MenuOrderV1'); $savedOrderKind = $existing.GetValueKind('MenuOrderV1') }
 if ($existing) { $existing.Dispose() }
 $key = $hive.CreateSubKey($keyPath)
 try {
+    $key.DeleteValue('MenuOrderV1',$false)
     $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     foreach ($fixture in @(
         @{Name='old'; Tool='26.4.0.0'; Engine='26.5.0.0'},
@@ -88,15 +92,41 @@ try {
         & $probe $dll options-direct-icons-folder-preview 0 ($folderPreview+'\')
         if ($LASTEXITCODE -ne 0) { throw 'Folder output preview with trailing separator failed' }
         $count++
+        $longStem = ('앞' * 33) + [char]::ConvertFromUtf32(0x1f680) + [char]::ConvertFromUtf32(0x1f600) + ('긴&이름' * 12) + ' 꼬리'
+        $longPath = Join-Path $testRoot ($longStem + '.txt')
+        [IO.File]::WriteAllText($longPath,'long filename')
+        foreach ($suffix in @('.zip',' (2).zip','.7z')) { [IO.File]::WriteAllText((Join-Path $testRoot ($longStem+$suffix)),'existing output') }
+        foreach ($layout in @('direct','cascade')) {
+            $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
+            & $probe $dll ('options-'+$layout+'-icons-long-name') 0 $longPath
+            if ($LASTEXITCODE -ne 0) { throw 'Long filename abbreviation failed' }
+            $count++
+        }
+        foreach ($orderCase in @('reverse','partial','invalid','oversized')) {
+            if ($orderCase -eq 'reverse') { $key.SetValue('MenuOrderV1',[string[]]@('4096','8','4','2048','1024','512','256','2','1','128','64','32','16'),[Microsoft.Win32.RegistryValueKind]::MultiString) }
+            elseif ($orderCase -eq 'partial') { $key.SetValue('MenuOrderV1',[string[]]@('4096','4096','unknown','2','00016','-1'),[Microsoft.Win32.RegistryValueKind]::MultiString) }
+            elseif ($orderCase -eq 'invalid') { $key.SetValue('MenuOrderV1','4096',[Microsoft.Win32.RegistryValueKind]::String) }
+            else { $key.SetValue('MenuOrderV1',[string[]]@(('x'*1100)),[Microsoft.Win32.RegistryValueKind]::MultiString) }
+            foreach ($layout in @('direct','cascade')) {
+                $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
+                foreach ($selection in @(@($plain),@($archive),@($testRoot),@($plain,$archive),$many)) {
+                    & $probe $dll ('options-'+$layout+'-icons-order-'+$orderCase) 0 @selection
+                    if ($LASTEXITCODE -ne 0) { throw "Saved menu order failed: $orderCase $layout $architecture" }
+                    $count++
+                }
+            }
+        }
+        $key.DeleteValue('MenuOrderV1',$false)
         $key.SetValue('OptionsV1','invalid',[Microsoft.Win32.RegistryValueKind]::String)
         & $probe $dll compress 0 $plain
         if ($LASTEXITCODE -ne 0) { throw 'Invalid-setting fallback failed' }
     }
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    [pscustomobject]@{Success=$true; PackageVersion='0.4.2'; MenuScenarios=$count; BothArchitectures=$true; SettingsUi=$true; NativeCommandArguments=$true; RuntimeIsAdministrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); TestRoot=$testRoot; PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\options-test-results.json') -Encoding UTF8
+    [pscustomobject]@{Success=$true; PackageVersion='0.4.3'; MenuScenarios=$count; BothArchitectures=$true; SettingsUi=$true; SavedMenuOrder=$true; ShortMenuLabels=$true; NativeCommandArguments=$true; RuntimeIsAdministrator=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); TestRoot=$testRoot; PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\options-test-results.json') -Encoding UTF8
 } finally {
     if ($valueExisted) { $key.SetValue('OptionsV1',$savedValue,$savedKind) } else { $key.DeleteValue('OptionsV1',$false) }
+    if ($orderExisted) { $key.SetValue('MenuOrderV1',$savedOrder,$savedOrderKind) } else { $key.DeleteValue('MenuOrderV1',$false) }
     $empty = $key.GetValueNames().Count -eq 0 -and $key.GetSubKeyNames().Count -eq 0
     $key.Dispose()
     if (-not $keyExisted -and $empty) { $hive.DeleteSubKey($keyPath,$false) }

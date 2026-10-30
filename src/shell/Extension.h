@@ -42,6 +42,7 @@ struct Command {
     int group = 0; // 1: open with type, 2: CRC/SHA
 };
 DWORD ReadOptions();
+std::vector<DWORD> ReadMenuOrder();
 std::vector<Command> CommandCatalog();
 std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD options);
 bool IsArchiveName(const std::wstring& path);

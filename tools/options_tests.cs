@@ -53,12 +53,21 @@ internal static class OptionsTests
                 catch (FileNotFoundException) { accepted = false; }
                 Check(accepted == (fixture == "minimum" || fixture == "future"), "Version policy with real PE resources: " + fixture);
             }
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e) {
+                Console.Error.WriteLine(e.Exception.GetType().FullName + ": " + e.Exception.Message);
+                Console.Error.WriteLine(e.Exception.StackTrace); Environment.Exit(1);
+            };
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             OptionsStore.Write(OptionsStore.Defaults);
             using (var form = new SettingsWindow()) {
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false;
                 form.Show(); Application.DoEvents();
                 Check(form.ReadControls() == OptionsStore.Defaults && !form.Apply.Enabled && form.ShowSettings.Checked, "Existing settings keep the settings entry visible");
+                Check(form.CommandList.Height >= 250 && form.MoveUp.Visible && form.MoveDown.Visible && form.ResetOrder.Visible,
+                    "Order list has room for all commands and visible move buttons");
+                Check(form.CommandList.Parent.Parent.ClientSize.Height >= form.CommandList.Parent.Height,
+                    "Order list is contained within its visible group instead of clipped");
                 using (var bitmap = new Bitmap(form.Width, form.Height)) {
                     form.DrawToBitmap(bitmap, form.ClientRectangle.IsEmpty ? Rectangle.Empty : new Rectangle(0, 0, form.Width, form.Height));
                     bitmap.Save(Path.Combine(root, "settings.png"));
@@ -93,14 +102,66 @@ internal static class OptionsTests
                 form.LoadControls(OptionsStore.Defaults); form.Save();
                 Check((OptionsStore.Read() & OptionsStore.HideSettings) == 0, "Settings window can restore the context entry");
             }
+            uint[] defaultOrder = { 16, 32, 64, 128, 1, 2, 256, 512, 1024, 2048, 4, 8, 4096 };
+            Check(OptionsStore.ReadOrder().SequenceEqual(defaultOrder), "Default order follows the settings list");
+            Check(OptionsStore.NormalizeOrder(new[] { "4096", "4096", "unknown", "2", "00016", "-1" })
+                .SequenceEqual(new uint[] { 4096, 2 }.Concat(defaultOrder.Where(id => id != 4096 && id != 2))), "Partial order ignores unknown/duplicate IDs and appends missing commands");
+            using (var form = new SettingsWindow()) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                Check(form.ReadOrder().SequenceEqual(defaultOrder) && !form.Apply.Enabled, "UI and stored default order agree");
+                Check(form.Commands[16].SubItems[1].Text == "7-Zip 기본" && form.Commands[1].SubItems[1].Text == "확장" && form.Commands[2].SubItems[1].Text == "확장", "Origin column distinguishes built-in connections and extension processing");
+                Check(!form.MoveUp.Enabled && !form.MoveDown.Enabled, "Move buttons require a selection");
+                form.Commands[16].Selected = true; Application.DoEvents();
+                Check(!form.MoveUp.Enabled && form.MoveDown.Enabled, "First row cannot move upward");
+                bool checkedBefore = form.Commands[16].Checked;
+                form.MoveDown.PerformClick(); Application.DoEvents();
+                Check(form.ReadOrder()[0] == 32 && form.ReadOrder()[1] == 16 && form.Commands[16].Checked == checkedBefore, "Moving a row preserves its checkbox and identity");
+                Check(form.Apply.Enabled && OptionsStore.ReadOrder().SequenceEqual(defaultOrder), "Order-only editing does not save before apply");
+                form.Apply.PerformClick();
+                Check(OptionsStore.ReadOrder()[0] == 32 && !form.Apply.Enabled, "Apply saves order even when checkboxes do not change");
+                form.Commands[16].Checked = true; form.Save();
+                form.Commands[16].Checked = false; form.Save();
+                Check(OptionsStore.ReadOrder()[1] == 16, "Toggling a command preserves its saved position");
+                form.ResetOrder.PerformClick();
+                Check(form.ReadOrder().SequenceEqual(defaultOrder) && form.Apply.Enabled && OptionsStore.ReadOrder()[0] == 32, "Restore order waits for apply and preserves checkboxes");
+                form.Cancel.PerformClick();
+            }
+            using (var form = new SettingsWindow()) {
+                Check(form.ReadOrder()[0] == 32, "Cancel discards order edits and reopening restores applied order");
+                form.LoadOrder(defaultOrder.Reverse().ToArray()); form.Save();
+            }
+            using (var form = new SettingsWindow()) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                Check(form.ReadOrder().SequenceEqual(defaultOrder.Reverse()), "Full custom order reloads");
+                form.Commands[16].Selected = true; Application.DoEvents();
+                Check(form.MoveUp.Enabled && !form.MoveDown.Enabled, "Last row cannot move downward");
+                using (var bitmap = new Bitmap(form.Width, form.Height)) {
+                    form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height));
+                    bitmap.Save(Path.Combine(root, "settings-custom-order.png"));
+                }
+                form.Reset.PerformClick();
+                Check(form.ReadControls() == OptionsStore.Defaults && form.ReadOrder().SequenceEqual(defaultOrder), "Full reset restores both flags and order");
+                form.Ok.PerformClick();
+                Check(OptionsStore.ReadOrder().SequenceEqual(defaultOrder) && form.DialogResult == DialogResult.OK, "OK saves restored order");
+            }
             string sevenZip = Path.GetDirectoryName(Engine.FindSevenZip());
             foreach (string name in new[] { "7z.exe", "7zG.exe", "7zFM.exe" }) {
                 RuntimeSafety.RequireSupportedSevenZip(Path.Combine(sevenZip, name));
                 Check(true, "Installed tool and engine meet minimum: " + name);
             }
             string source = Path.Combine(root, "한글 [1] & @문서.txt"); File.WriteAllText(source, "original");
+            string longStem = new String('앞', 33) + Char.ConvertFromUtf32(0x1f680) + Char.ConvertFromUtf32(0x1f600)
+                + String.Concat(Enumerable.Repeat("긴&이름", 12)) + " 실제출력";
+            string longSource = Path.Combine(root, longStem + ".txt"); File.WriteAllText(longSource, "literal long name");
             string other = Path.Combine(root, "-추가.txt"); File.WriteAllText(other, "other");
             var engine = new Engine(CancellationToken.None, delegate { return null; }, delegate { });
+            foreach (var operation in new[] { Operation.QuickZip, Operation.Quick7z }) {
+                string suffix = operation == Operation.QuickZip ? ".zip" : ".7z";
+                string existing = Path.Combine(root, longStem + suffix); File.WriteAllText(existing, "preserve");
+                JobResult longJob = engine.Run(new Request { Operation = operation, Paths = new[] { longSource } });
+                Check(longJob.Success && longJob.Items[0].Output == Path.Combine(root, longStem + " (2)" + suffix)
+                    && File.Exists(longJob.Items[0].Output) && File.ReadAllText(existing) == "preserve", "Long " + suffix + " output keeps full filename and existing result despite abbreviated menu");
+            }
             JobResult zip = engine.Run(new Request { Operation = Operation.QuickZip, Paths = new[] { source, other } });
             Check(zip.Success && zip.Items.Count == 1 && File.Exists(zip.Items[0].Output), "Quick ZIP groups selected files");
             JobResult again = engine.Run(new Request { Operation = Operation.QuickZip, Paths = new[] { source, other } });
