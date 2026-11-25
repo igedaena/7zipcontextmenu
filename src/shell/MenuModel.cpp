@@ -77,8 +77,17 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
     const auto marker = lower.ends_with(L".rar") ? L".part" : L".vol";
     const auto part = lower.rfind(marker);
     const auto digits = part == std::wstring::npos ? part : part + std::wcslen(marker);
-    if (part != std::wstring::npos && digits < lower.size() - 4 &&
-        std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; }) &&
+    const bool volumeName = part != std::wstring::npos && digits < lower.size() - 4 &&
+        std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+    if (volumeName && lower.ends_with(L".egg")) {
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        const auto root = std::filesystem::path(path).root_path();
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            (attributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)) ||
+            path.starts_with(L"\\\\") || GetDriveTypeW(root.c_str()) == DRIVE_REMOTE)
+            return L"파일명 폴더에 풀기";
+    }
+    if (volumeName &&
         (lower.ends_with(L".rar") || (lower.ends_with(L".egg") && IsSplitEggFile(path)))) {
         name.resize(part);
     } else {

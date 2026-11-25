@@ -120,6 +120,13 @@ internal static class BandizipTests
                 for (int i = 1; i <= 10; i++) Fixture(Path.Combine(root, "ten.vol" + i + ".egg"), true, content, (uint)i, (uint)(i - 1), i == 10 ? 0U : (uint)(i + 1));
                 normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { Path.Combine(root, "ten.vol10.egg") } });
                 Check(normalized.Single() == Path.Combine(root, "ten.vol1.egg"), "Two-digit EGG volumes preserve unpadded numbering");
+                for (int i = 1; i <= 10; i++) Fixture(Path.Combine(root, "padded.vol" + i.ToString("D2") + ".egg"), true, content, (uint)i, (uint)(i - 1), i == 10 ? 0U : (uint)(i + 1));
+                normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { Path.Combine(root, "padded.vol10.egg") } });
+                Check(normalized.Single() == Path.Combine(root, "padded.vol01.egg"), "A padded EGG set still resolves correctly at the ten-volume boundary");
+                string[] bulkVolumes = Enumerable.Range(1, 100).Select(i => Path.Combine(root, "bulk.vol" + i + ".egg")).ToArray();
+                for (int i = 0; i < bulkVolumes.Length; i++) Fixture(bulkVolumes[i], true, content, (uint)(i + 1), (uint)i, i + 1 == bulkVolumes.Length ? 0U : (uint)(i + 2));
+                normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = bulkVolumes.Reverse().ToArray() });
+                Check(normalized.Length == 1 && normalized[0] == bulkVolumes[0], "A bulk selection reuses validated volume mappings");
                 string alz = Path.Combine(root, "split.alz"); Fixture(alz, false, content);
                 string a00 = Path.Combine(root, "split.a00"); File.WriteAllText(a00, "volume placeholder");
                 rejected = false;

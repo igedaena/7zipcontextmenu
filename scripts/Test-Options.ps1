@@ -125,6 +125,16 @@ try {
                 }
             }
         }
+        $offlineVolume = Join-Path $testRoot 'offline.vol2.egg'; [IO.File]::WriteAllText($offlineVolume,'offline placeholder')
+        [IO.File]::SetAttributes($offlineVolume,[IO.FileAttributes]::Offline)
+        try {
+            foreach ($layout in @('direct','cascade')) {
+                $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
+                & $probe $dll ('options-'+$layout+'-icons-bandizip-on-extract-placeholder') 0 $offlineVolume
+                if ($LASTEXITCODE -ne 0) { throw 'Offline EGG volume label fallback failed' }
+                $count++
+            }
+        } finally { [IO.File]::SetAttributes($offlineVolume,[IO.FileAttributes]::Normal) }
         $key.DeleteValue('BandizipFormatsV1',$false)
         $key.DeleteValue('BandizipEnabledV1',$false)
         $collisionArchive = Join-Path $testRoot 'folder-target.zip'; [IO.File]::WriteAllText($collisionArchive,'menu fixture')

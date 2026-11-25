@@ -161,6 +161,7 @@ try {
     if ($Action -eq 'Status') {
         if ($AsJson) {
             $registered = 0; $owned = 0; $conflict = $false; $ownershipError = Get-ShortcutError $shortcut
+            $ownedShortcut = (Test-Path -LiteralPath $shortcut) -and -not $ownershipError
             foreach ($state in $handles) {
                 $errorText = Get-OwnershipError $state
                 if ($errorText) { $ownershipError = $errorText }
@@ -187,12 +188,13 @@ try {
             }
             $complete = $registered -eq $views.Count -and -not $conflict -and -not $ownershipError
             $message = if ($ownershipError) { $ownershipError }
-                elseif ($conflict -and $owned -gt 0) { '설치형과 포터블 등록이 함께 있습니다. 메뉴 해제로 포터블 등록을 정리할 수 있습니다.' }
+                elseif ($conflict -and ($owned -gt 0 -or $ownedShortcut)) { '설치형과 포터블 항목이 함께 있습니다. 메뉴 해제로 포터블 등록과 설정 바로 가기를 정리할 수 있습니다.' }
                 elseif ($conflict) { '기존 설치형 등록이 있습니다. 기존 설치를 제거한 뒤 사용해 주세요.' }
                 elseif ($complete) { '이 폴더의 메뉴가 등록되어 있습니다. 메뉴 해제 또는 옵션을 선택하세요.' }
                 elseif ($owned -gt 0) { '이전 위치 또는 일부 메뉴 등록이 있습니다. 메뉴 등록으로 현재 폴더에 다시 연결하거나 메뉴 해제로 정리하세요.' }
+                elseif ($ownedShortcut) { '포터블 설정 바로 가기가 남아 있습니다. 메뉴 해제로 정리하거나 메뉴 등록으로 다시 연결하세요.' }
                 else { '메뉴 등록을 누르면 현재 사용자에게 우클릭 메뉴를 등록합니다.' }
-            [pscustomobject]@{CanRegister=(-not $complete -and -not $conflict -and -not $ownershipError);CanUnregister=($owned -gt 0 -and -not $ownershipError);CanOptions=$complete;Message=$message} | ConvertTo-Json -Compress
+            [pscustomobject]@{CanRegister=(-not $complete -and -not $conflict -and -not $ownershipError);CanUnregister=(($owned -gt 0 -or $ownedShortcut) -and -not $ownershipError);CanOptions=$complete;Message=$message} | ConvertTo-Json -Compress
             return
         }
         foreach ($state in $handles) {

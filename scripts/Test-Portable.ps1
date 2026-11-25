@@ -92,6 +92,14 @@ try {
     Check (-not $status.CanRegister -and -not $status.CanUnregister) 'Foreign shortcut disables unavailable registration actions'
     Invoke-Menu $package Register -ExpectFailure
     [IO.File]::Delete($shortcut)
+    $ownShortcut = $shell.CreateShortcut($shortcut)
+    $ownShortcut.TargetPath = Join-Path $package 'SevenZipContextWorker.exe'; $ownShortcut.Description = 'SevenZipContextMenu.Portable.v1'; $ownShortcut.Save()
+    Set-TestValue "Machine\Registry64\Classes\CLSID\$classId" '' 'Installed public version'
+    $status = Invoke-Menu $package Status
+    Check (-not $status.CanRegister -and $status.CanUnregister) 'An owned leftover shortcut remains removable despite installed conflict'
+    Invoke-Menu $package Unregister
+    Check (-not (Test-Path -LiteralPath $shortcut)) 'Unregister removes an owned shortcut without registry entries'
+    $hive.DeleteSubKeyTree($testBase+'\Machine',$false)
     $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     $uiTest=Join-Path $caseRoot 'portable_ui_tests.exe'
     & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')

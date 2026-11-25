@@ -188,11 +188,11 @@ namespace SevenZipContextMenu
             throw new FileNotFoundException("설치된 7-Zip " + RuntimeSafety.MinimumSevenZipText + " 이상의 7z.exe를 찾을 수 없습니다.");
         }
 
-        private static string FirstVolume(string input)
+        private static string FirstVolume(string input, Dictionary<string, EggVolumeInfo> eggHeaders, Dictionary<string, string> firstEggVolumes)
         {
             string filename = Path.GetFileName(input);
             Match egg = Regex.Match(filename, @"^(.*\.vol)(\d+)(\.egg)$", RegexOptions.IgnoreCase);
-            if (egg.Success) return FirstEggVolume(input, egg);
+            if (egg.Success) return FirstEggVolume(input, egg, eggHeaders, firstEggVolumes);
             Match rar = Regex.Match(filename, @"^(.*\.part)(\d+)(\.rar)$", RegexOptions.IgnoreCase);
             if (rar.Success)
             {
@@ -210,27 +210,39 @@ namespace SevenZipContextMenu
             return input;
         }
 
-        private static string FirstEggVolume(string input, Match match)
+        private static EggVolumeInfo ReadEggHeader(string path, Dictionary<string, EggVolumeInfo> headers)
         {
-            uint id, previous, next;
-            if (!BandizipOptions.TryReadEggVolume(input, out id, out previous, out next) || previous == 0) return input;
+            EggVolumeInfo header;
+            if (!headers.TryGetValue(path, out header)) { header = BandizipOptions.ReadEggVolume(path); headers.Add(path, header); }
+            return header;
+        }
+        private static string FirstEggVolume(string input, Match match, Dictionary<string, EggVolumeInfo> headers, Dictionary<string, string> firstVolumes)
+        {
+            string known;
+            if (firstVolumes.TryGetValue(input, out known)) return known;
+            EggVolumeInfo selected = ReadEggHeader(input, headers);
+            if (selected == null || selected.Previous == 0) { firstVolumes[input] = input; return input; }
             int number;
             if (!Int32.TryParse(match.Groups[2].Value, out number) || number < 2 || number > 10000)
                 throw new InvalidDataException("EGG 분할 볼륨 번호를 확인할 수 없습니다.");
-            string first = null;
-            uint lastId = 0, lastNext = 0;
-            int padding = match.Groups[2].Value[0] == '0' ? match.Groups[2].Length : 0;
-            for (int i = 1; i <= number; i++) {
-                string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(padding, '0') + match.Groups[3].Value;
-                string volume = Path.Combine(Path.GetDirectoryName(input), name);
-                if (!File.Exists(volume)) throw new FileNotFoundException("분할 압축 볼륨을 찾을 수 없습니다.", volume);
-                if (!BandizipOptions.TryReadEggVolume(volume, out id, out previous, out next) ||
-                    (i == 1 ? previous != 0 : previous != lastId || id != lastNext))
-                    throw new InvalidDataException("EGG 분할 볼륨의 연결 정보가 일치하지 않습니다: " + volume);
-                if (i == 1) first = volume;
-                lastId = id; lastNext = next;
+            // vol10 can belong to either vol1...vol10 or vol01...vol10.
+            // Use the actual header chain to choose between both naming patterns.
+            foreach (int padding in new[] { 0, match.Groups[2].Length }.Distinct()) {
+                var chain = new List<string>();
+                EggVolumeInfo last = null;
+                for (int i = 1; i <= number; i++) {
+                    string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(padding, '0') + match.Groups[3].Value;
+                    string volume = Path.Combine(Path.GetDirectoryName(input), name);
+                    if (i == number && !String.Equals(volume, input, StringComparison.OrdinalIgnoreCase)) break;
+                    EggVolumeInfo header = ReadEggHeader(volume, headers);
+                    if (header == null || (last == null ? header.Previous != 0 : header.Previous != last.Id || header.Id != last.Next)) break;
+                    chain.Add(volume); last = header;
+                }
+                if (chain.Count != number) continue;
+                foreach (string volume in chain) firstVolumes[volume] = chain[0];
+                return chain[0];
             }
-            return first;
+            throw new InvalidDataException("EGG 분할 볼륨이 없거나 연결 정보가 일치하지 않습니다: " + input);
         }
 
         internal static string[] NormalizeInputs(Request request, int bandizipFormats = -1)
@@ -239,11 +251,13 @@ namespace SevenZipContextMenu
             bool extracting = request.Operation == Operation.SmartExtract || request.Operation == Operation.ExtractToFolder ||
                 request.Operation == Operation.ExtractDialog || request.Operation == Operation.ExtractHere || request.Operation == Operation.Test;
             var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var eggHeaders = new Dictionary<string, EggVolumeInfo>(StringComparer.OrdinalIgnoreCase);
+            var firstEggVolumes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<string>();
             foreach (string original in request.Paths)
             {
                 string path = Path.GetFullPath(original);
-                if (extracting) path = FirstVolume(path);
+                if (extracting) path = FirstVolume(path, eggHeaders, firstEggVolumes);
                 if (!unique.Add(path)) continue;
                 if (extracting && (!File.Exists(path) || !(IsArchive(path) || BandizipOptions.Supports(path, bandizipFormats))))
                     throw new InvalidDataException("선택한 항목 전체가 지원하는 압축 파일이어야 합니다: " + path);
@@ -269,8 +283,7 @@ namespace SevenZipContextMenu
             Match rar = Regex.Match(name, @"^(.*)\.part\d+\.rar$", RegexOptions.IgnoreCase);
             if (rar.Success) return ValidStem(rar.Groups[1].Value);
             Match egg = Regex.Match(name, @"^(.*)\.vol\d+\.egg$", RegexOptions.IgnoreCase);
-            uint id, previous, next;
-            if (egg.Success && BandizipOptions.TryReadEggVolume(input, out id, out previous, out next)) return ValidStem(egg.Groups[1].Value);
+            if (egg.Success && BandizipOptions.ReadEggVolume(input) != null) return ValidStem(egg.Groups[1].Value);
             foreach (string suffix in new[] { ".tar.gz", ".tar.bz2", ".tar.xz", ".7z.001", ".zip.001", ".tgz", ".tbz2", ".txz" })
                 if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return ValidStem(name.Substring(0, name.Length - suffix.Length));
             return ValidStem(Path.GetFileNameWithoutExtension(name));

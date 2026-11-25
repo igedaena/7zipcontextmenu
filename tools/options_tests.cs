@@ -147,7 +147,7 @@ internal static class OptionsTests
             using (var form = new SettingsWindow()) {
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
                 Check(form.FontSize.Value == 9 && form.Font.Size == 9, "Old settings default to 9pt");
-                form.FontSize.Value = 18; Application.DoEvents();
+                form.FontSize.Text = "18"; Application.DoEvents();
                 Check(form.Font.Size == 18 && form.Apply.Enabled && OptionsStore.ReadFontSize() == 9, "Font changes preview without saving");
                 Check(form.Ok.Bottom <= form.Ok.Parent.ClientSize.Height && form.CommandList.Height >= 250, "Large font keeps action buttons and menu list accessible");
                 form.Tabs.SelectedIndex = 1; Application.DoEvents();

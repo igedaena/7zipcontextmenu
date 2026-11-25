@@ -134,7 +134,9 @@ int wmain(int argc, wchar_t** argv)
                     if (std::string(verb) == "SevenZipExt.ExtractToFolder" && paths.size() == 1) {
                         wchar_t title[1024]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 1024, MF_BYPOSITION);
                         const std::wstring label(title);
-                        Check(label.starts_with(L"\"") && label.ends_with(L"\\\" 에 풀기"), "Single archive displays the extraction folder");
+                        if (mode.find(L"-extract-placeholder") != std::wstring::npos)
+                            Check(label == L"파일명 폴더에 풀기", "Offline volume uses a generic label without reading file contents");
+                        else Check(label.starts_with(L"\"") && label.ends_with(L"\\\" 에 풀기"), "Single archive displays the extraction folder");
                         const std::vector<std::pair<std::wstring, std::wstring>> cases{
                             {L"extract-simple", L"sample"}, {L"extract-tar", L"bundle"},
                             {L"extract-split", L"bundle"}, {L"extract-rar", L"bundle"},

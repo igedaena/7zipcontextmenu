@@ -23,38 +23,41 @@ using Microsoft.Win32;
 
 namespace SevenZipContextMenu
 {
+    internal sealed class EggVolumeInfo
+    {
+        internal uint Id, Previous, Next;
+    }
     internal sealed class BandizipOptions
     {
         internal bool Enabled;
         internal int Formats = 3;
         internal int ActiveFormats { get { return Enabled ? Formats : 0; } }
         internal string Executable = "";
-        internal static bool TryReadEggVolume(string file, out uint id, out uint previous, out uint next)
+        internal static EggVolumeInfo ReadEggVolume(string file)
         {
-            id = previous = next = 0;
             try {
                 using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 using (var reader = new BinaryReader(stream)) {
                     long limit = Math.Min(stream.Length, 65536);
-                    if (limit < 18 || reader.ReadUInt32() != 0x41474745 || reader.ReadUInt16() != 256) return false;
-                    id = reader.ReadUInt32(); reader.ReadUInt32();
+                    if (limit < 18 || reader.ReadUInt32() != 0x41474745 || reader.ReadUInt16() != 256) return null;
+                    uint id = reader.ReadUInt32(); reader.ReadUInt32();
                     while (stream.Position + 4 <= limit) {
                         uint magic = reader.ReadUInt32();
-                        if (magic == 0x08e28222 || stream.Position + 3 > limit) return false;
+                        if (magic == 0x08e28222 || stream.Position + 3 > limit) return null;
                         byte flags = reader.ReadByte();
-                        if ((flags & 1) != 0 && stream.Position + 4 > limit) return false;
+                        if ((flags & 1) != 0 && stream.Position + 4 > limit) return null;
                         uint length = (flags & 1) == 0 ? reader.ReadUInt16() : reader.ReadUInt32();
-                        if (length > limit - stream.Position) return false;
+                        if (length > limit - stream.Position) return null;
                         if (magic == 0x24f5a262 && flags == 0 && length == 8) {
-                            previous = reader.ReadUInt32(); next = reader.ReadUInt32();
-                            return previous != 0 || next != 0;
+                            uint previous = reader.ReadUInt32(), next = reader.ReadUInt32();
+                            return previous != 0 || next != 0 ? new EggVolumeInfo { Id = id, Previous = previous, Next = next } : null;
                         }
                         stream.Position += length;
                     }
                 }
             } catch (IOException) { }
             catch (UnauthorizedAccessException) { }
-            return false;
+            return null;
         }
         internal static bool Supports(string path, int formats)
         {
@@ -339,6 +342,11 @@ namespace SevenZipContextMenu
             FontSize.ValueChanged += delegate {
                 Font oldFont = Font; Font = new Font("맑은 고딕", (float)FontSize.Value); oldFont.Dispose();
                 ResizeCommandList(); UpdateDirty();
+            };
+            FontSize.TextChanged += delegate {
+                int points;
+                if (Int32.TryParse(FontSize.Text, out points) && points >= FontSize.Minimum && points <= FontSize.Maximum && points != FontSize.Value)
+                    FontSize.Value = points;
             };
             FontChanged += delegate {
                 float scale = Font.Size / 9F;
