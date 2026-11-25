@@ -42,7 +42,7 @@ internal static class NativeProgressTests
         internal bool SawProgress, SawPassword, CancelNative, CancelSent;
         internal string Password, Screenshot;
         internal string ProcessName = "7zG";
-        internal bool CloseExternalDialogs;
+        internal bool CloseExternalDialogs { get; set; }
         internal string Error;
         internal readonly StringBuilder Diagnostics=new StringBuilder();
         private readonly HashSet<IntPtr> diagnosed=new HashSet<IntPtr>();
@@ -89,6 +89,7 @@ internal static class NativeProgressTests
                     EnumWindows(delegate(IntPtr window, IntPtr unused) {
                         uint pid; GetWindowThreadProcessId(window, out pid);
                         if (!candidates.Contains((int)pid)) return true;
+                        if (!IsWindowVisible(window)) return true;
                         if (ProcessName == "Bandizip" && IsWindowVisible(window)) {
                             bool first = diagnosed.Add(window);
                             if (first) Diagnostics.AppendLine("Bandizip window: " + Text(window));
@@ -145,7 +146,7 @@ internal static class NativeProgressTests
                                 PostMessage(window,0x111,new IntPtr(2),IntPtr.Zero);
                         } else if (CancelSent && GetDlgItem(window,6)!=IntPtr.Zero) {
                             PostMessage(window,0x111,new IntPtr(6),IntPtr.Zero);
-                        } else if (password == IntPtr.Zero && GetDlgItem(window,1)!=IntPtr.Zero) {
+                        } else if (Password == null && password == IntPtr.Zero && GetDlgItem(window,1)!=IntPtr.Zero) {
                             PostMessage(window,0x111,new IntPtr(1),IntPtr.Zero);
                         }
                         return true;
@@ -212,6 +213,10 @@ internal static class NativeProgressTests
             var cancelled=Gui(Operation.Compress7z,new[]{input},cancelMonitor);
             Check(cancelMonitor.CancelSent && cancelled.Cancelled && !File.Exists(Path.Combine(root,"payload (2).7z")) && File.Exists(seven.Items[0].Output),"Native Cancel stops publication and preserves completed output");
             Check(!cancelled.HasErrors, "User cancellation alone does not request a second result dialog");
+            var quickCancelMonitor = new DialogMonitor { CancelNative = true };
+            var quickCancelled = Gui(Operation.Quick7z, new[] { input }, quickCancelMonitor);
+            Check(quickCancelMonitor.CancelSent && quickCancelled.Cancelled && !quickCancelled.HasErrors,
+                "Grouped compression cancellation also avoids a second result dialog");
             var failedThenCancelled = new JobResult { Cancelled = true };
             failedThenCancelled.Items.Add(new ItemResult { Input = "failed.zip", Error = "damaged archive" });
             failedThenCancelled.Items.Add(new ItemResult { Input = "cancelled.zip", Cancelled = true, Error = "취소됨" });

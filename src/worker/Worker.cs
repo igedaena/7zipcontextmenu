@@ -118,7 +118,7 @@ namespace SevenZipContextMenu
             {
                 sevenZip = FindSevenZip();
                 bandizip = BandizipOptions.Read();
-                string[] inputs = NormalizeInputs(request, bandizip.Formats);
+                string[] inputs = NormalizeInputs(request, bandizip.ActiveFormats);
                 if (request.Operation == Operation.QuickZip || request.Operation == Operation.Quick7z) {
                     var item = new ItemResult { Input = String.Join("\r\n", inputs) };
                     result.Items.Add(item);
@@ -147,7 +147,13 @@ namespace SevenZipContextMenu
                     result.Items.Add(item);
                 }
             }
-            catch (OperationCanceledException) { result.Cancelled = true; }
+            catch (OperationCanceledException) {
+                result.Cancelled = true;
+                ItemResult pending = result.Items.LastOrDefault();
+                if (pending != null && !pending.Success && pending.Error == null) {
+                    pending.Cancelled = true; pending.Error = "취소됨";
+                }
+            }
             catch (Exception error) { result.Error = error.Message; }
             return result;
         }
@@ -186,10 +192,10 @@ namespace SevenZipContextMenu
         {
             string filename = Path.GetFileName(input);
             Match alz = Regex.Match(filename, @"^(.*)\.a\d{2}$", RegexOptions.IgnoreCase);
-            Match egg = Regex.Match(filename, @"^(.*\.vol)\d+(\.egg)$", RegexOptions.IgnoreCase);
-            if (alz.Success || egg.Success) {
-                string name = alz.Success ? alz.Groups[1].Value + ".alz" : egg.Groups[1].Value + "1" + egg.Groups[2].Value;
-                string first = Path.Combine(Path.GetDirectoryName(input), name);
+            Match egg = Regex.Match(filename, @"^(.*\.vol)(\d+)(\.egg)$", RegexOptions.IgnoreCase);
+            if (egg.Success) return FirstEggVolume(input, egg);
+            if (alz.Success) {
+                string first = Path.Combine(Path.GetDirectoryName(input), alz.Groups[1].Value + ".alz");
                 if (!File.Exists(first)) throw new FileNotFoundException("분할 압축의 첫 볼륨을 찾을 수 없습니다.", first);
                 return first;
             }
@@ -210,9 +216,31 @@ namespace SevenZipContextMenu
             return input;
         }
 
+        private static string FirstEggVolume(string input, Match match)
+        {
+            uint id, previous, next;
+            if (!BandizipOptions.TryReadEggVolume(input, out id, out previous, out next) || previous == 0) return input;
+            int number;
+            if (!Int32.TryParse(match.Groups[2].Value, out number) || number < 2 || number > 10000)
+                throw new InvalidDataException("EGG 분할 볼륨 번호를 확인할 수 없습니다.");
+            string first = null;
+            uint lastId = 0, lastNext = 0;
+            for (int i = 1; i <= number; i++) {
+                string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(match.Groups[2].Length, '0') + match.Groups[3].Value;
+                string volume = Path.Combine(Path.GetDirectoryName(input), name);
+                if (!File.Exists(volume)) throw new FileNotFoundException("분할 압축 볼륨을 찾을 수 없습니다.", volume);
+                if (!BandizipOptions.TryReadEggVolume(volume, out id, out previous, out next) ||
+                    (i == 1 ? previous != 0 : previous != lastId || id != lastNext))
+                    throw new InvalidDataException("EGG 분할 볼륨의 연결 정보가 일치하지 않습니다: " + volume);
+                if (i == 1) first = volume;
+                lastId = id; lastNext = next;
+            }
+            return first;
+        }
+
         internal static string[] NormalizeInputs(Request request, int bandizipFormats = -1)
         {
-            if (bandizipFormats < 0) bandizipFormats = BandizipOptions.Read().Formats;
+            if (bandizipFormats < 0) bandizipFormats = BandizipOptions.Read().ActiveFormats;
             bool extracting = request.Operation == Operation.SmartExtract || request.Operation == Operation.ExtractToFolder ||
                 request.Operation == Operation.ExtractDialog || request.Operation == Operation.ExtractHere || request.Operation == Operation.Test;
             var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -246,7 +274,8 @@ namespace SevenZipContextMenu
             Match rar = Regex.Match(name, @"^(.*)\.part\d+\.rar$", RegexOptions.IgnoreCase);
             if (rar.Success) return ValidStem(rar.Groups[1].Value);
             Match egg = Regex.Match(name, @"^(.*)\.vol\d+\.egg$", RegexOptions.IgnoreCase);
-            if (egg.Success) return ValidStem(egg.Groups[1].Value);
+            uint id, previous, next;
+            if (egg.Success && BandizipOptions.TryReadEggVolume(input, out id, out previous, out next)) return ValidStem(egg.Groups[1].Value);
             foreach (string suffix in new[] { ".tar.gz", ".tar.bz2", ".tar.xz", ".7z.001", ".zip.001", ".tgz", ".tbz2", ".txz" })
                 if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return ValidStem(name.Substring(0, name.Length - suffix.Length));
             return ValidStem(Path.GetFileNameWithoutExtension(name));
@@ -338,7 +367,7 @@ namespace SevenZipContextMenu
 
         private string ExtractToStage(string input, string parent)
         {
-            if (BandizipOptions.Supports(input, bandizip.Formats)) return ExtractBandizipToStage(input, parent);
+            if (BandizipOptions.Supports(input, bandizip.ActiveFormats)) return ExtractBandizipToStage(input, parent);
             string password = null;
             for (int attempt = 0; attempt < 4; attempt++)
             {

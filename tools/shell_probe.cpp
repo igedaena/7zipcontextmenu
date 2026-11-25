@@ -138,7 +138,8 @@ int wmain(int argc, wchar_t** argv)
                         const std::vector<std::pair<std::wstring, std::wstring>> cases{
                             {L"extract-simple", L"sample"}, {L"extract-tar", L"bundle"},
                             {L"extract-split", L"bundle"}, {L"extract-rar", L"bundle"},
-                            {L"extract-empty", L"archive"}, {L"extract-ampersand", L"한글 && 문서"}, {L"extract-bandi", L"bundle"}};
+                            {L"extract-empty", L"archive"}, {L"extract-ampersand", L"한글 && 문서"}, {L"extract-bandi", L"bundle"},
+                            {L"extract-standalone", L"standalone.vol2"}, {L"extract-collision", L"folder-target (3)"}};
                         for (const auto& [scenario, expected] : cases)
                             if (mode.find(scenario) != std::wstring::npos)
                                 Check(label == L"\"" + expected + L"\\\" 에 풀기", "Extraction label matches the normalized output stem");

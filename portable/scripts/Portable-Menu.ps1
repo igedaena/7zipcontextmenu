@@ -70,6 +70,27 @@ function Set-Values($Hive,[string]$Path,[hashtable]$Values) {
     $key = $Hive.CreateSubKey($Path)
     try { foreach ($name in $Values.Keys) { $key.SetValue($name,$Values[$name],[Microsoft.Win32.RegistryValueKind]::String) } } finally { $key.Dispose() }
 }
+function Get-OwnershipError($State) {
+    $tree = Read-Tree $State.User $State.ClassPath
+    if ($null -ne $tree) {
+        $oldRoot = Value-At $State.User $State.ClassPath 'PortableRoot'
+        if ((Value-At $State.User $State.ClassPath) -ne $className -or (Value-At $State.User $State.ClassPath 'PortableOwner') -ne $owner -or -not $oldRoot) {
+            return '이 클래스 ID는 포터블 등록 소유가 아닙니다. 기존 등록을 먼저 확인해 주세요.'
+        }
+        try { $expected = Join-Path $oldRoot ($State.Architecture+'\SevenZipContextMenu.dll') }
+        catch { return '포터블 등록 경로의 소유 기록이 올바르지 않습니다.' }
+        if (-not [string]::Equals((Value-At $State.User ($State.ClassPath+'\InprocServer32')),$expected,[StringComparison]::OrdinalIgnoreCase)) {
+            return '포터블 등록 경로가 소유 기록과 다릅니다. 기존 등록을 먼저 확인해 주세요.'
+        }
+    }
+    foreach ($path in $State.Handlers) {
+        $handler = Read-Tree $State.User $path
+        if ($null -ne $handler -and ($null -eq $tree -or (Value-At $State.User $path) -ne $classId)) {
+            return '이름이 같은 다른 메뉴 등록이 있습니다. 기존 등록을 먼저 확인해 주세요.'
+        }
+    }
+    return $null
+}
 function Check-Machine($State) {
     foreach ($path in @($State.MachineClassPath,$State.UninstallPath)) {
         $key = $State.Machine.OpenSubKey($path)
@@ -126,18 +147,18 @@ try {
     }
     if ($Action -eq 'Status') {
         if ($AsJson) {
-            $registered = 0; $owned = 0; $conflict = $false
+            $registered = 0; $owned = 0; $conflict = $false; $ownershipError = $null
             foreach ($state in $handles) {
+                $errorText = Get-OwnershipError $state
+                if ($errorText) { $ownershipError = $errorText }
                 $root = Value-At $state.User $state.ClassPath 'PortableRoot'
                 $class = Value-At $state.User $state.ClassPath
                 $portable = (Value-At $state.User $state.ClassPath 'PortableOwner') -eq $owner -and $class -eq $className -and $root
-                if ($portable) { $owned++ }
-                elseif ($null -ne (Read-Tree $state.User $state.ClassPath)) { $conflict = $true }
+                if ($portable -and -not $errorText) { $owned++ }
                 $complete = $portable -and [string]::Equals($root,$appRoot,[StringComparison]::OrdinalIgnoreCase) -and
                     [string]::Equals((Value-At $state.User ($state.ClassPath+'\InprocServer32')),(Join-Path $appRoot ($state.Architecture+'\SevenZipContextMenu.dll')),[StringComparison]::OrdinalIgnoreCase)
                 foreach ($path in $state.Handlers) {
                     $handler = Read-Tree $state.User $path
-                    if ($null -ne $handler -and (Value-At $state.User $path) -ne $classId) { $conflict = $true }
                     if ((Value-At $state.User $path) -ne $classId) { $complete = $false }
                 }
                 if ($complete) { $registered++ }
@@ -151,12 +172,14 @@ try {
                     if ($key) { $key.Dispose(); $conflict = $true }
                 }
             }
-            $complete = $registered -eq $views.Count -and -not $conflict
-            $message = if ($conflict) { '기존 설치형 또는 다른 메뉴 등록이 있습니다. 기존 등록을 해제한 뒤 사용해 주세요.' }
+            $complete = $registered -eq $views.Count -and -not $conflict -and -not $ownershipError
+            $message = if ($ownershipError) { $ownershipError }
+                elseif ($conflict -and $owned -gt 0) { '설치형과 포터블 등록이 함께 있습니다. 메뉴 해제로 포터블 등록을 정리할 수 있습니다.' }
+                elseif ($conflict) { '기존 설치형 등록이 있습니다. 기존 설치를 제거한 뒤 사용해 주세요.' }
                 elseif ($complete) { '이 폴더의 메뉴가 등록되어 있습니다. 메뉴 해제 또는 옵션을 선택하세요.' }
                 elseif ($owned -gt 0) { '이전 위치 또는 일부 메뉴 등록이 있습니다. 메뉴 등록으로 현재 폴더에 다시 연결하거나 메뉴 해제로 정리하세요.' }
                 else { '메뉴 등록을 누르면 현재 사용자에게 우클릭 메뉴를 등록합니다.' }
-            [pscustomobject]@{CanRegister=(-not $complete -and -not $conflict);CanUnregister=($owned -gt 0 -and -not $conflict);CanOptions=$complete;Message=$message} | ConvertTo-Json -Compress
+            [pscustomobject]@{CanRegister=(-not $complete -and -not $conflict -and -not $ownershipError);CanUnregister=($owned -gt 0 -and -not $ownershipError);CanOptions=$complete;Message=$message} | ConvertTo-Json -Compress
             return
         }
         foreach ($state in $handles) {
@@ -179,22 +202,8 @@ try {
                 if ($key) { $key.Dispose(); throw '공용 설치가 등록되어 있습니다.' }
             }
         }
-        $tree = Read-Tree $state.User $state.ClassPath
-        if ($null -ne $tree) {
-            $oldRoot = Value-At $state.User $state.ClassPath 'PortableRoot'
-            $oldDll = Value-At $state.User ($state.ClassPath+'\InprocServer32')
-            if ((Value-At $state.User $state.ClassPath) -ne $className -or (Value-At $state.User $state.ClassPath 'PortableOwner') -ne $owner -or -not $oldRoot) {
-                throw '이 클래스 ID는 포터블 등록 소유가 아닙니다. 기존 메뉴 등록을 자동으로 덮어쓰거나 제거하지 않습니다.'
-            }
-            $expected = Join-Path $oldRoot ($state.Architecture+'\SevenZipContextMenu.dll')
-            if (-not [string]::Equals($oldDll,$expected,[StringComparison]::OrdinalIgnoreCase)) { throw '포터블 등록 경로가 소유 기록과 다릅니다. 자동 변경을 중단했습니다.' }
-        }
-        foreach ($path in $state.Handlers) {
-            $handler=Read-Tree $state.User $path
-            if ($null -ne $handler -and ($null -eq $tree -or (Value-At $state.User $path) -ne $classId)) {
-                throw '이름이 같은 다른 메뉴 등록이 있어 변경하지 않습니다.'
-            }
-        }
+        $ownershipError = Get-OwnershipError $state
+        if ($ownershipError) { throw $ownershipError }
         foreach ($path in @($state.ClassPath)+$state.Handlers) { $snapshots += [pscustomobject]@{Hive=$state.User;Path=$path;Tree=(Read-Tree $state.User $path)} }
     }
     $shortcutDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) '7-Zip 확장 (포터블)'

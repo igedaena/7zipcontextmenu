@@ -14,6 +14,8 @@
 
 #include "Extension.h"
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <cwctype>
 #include <filesystem>
 
@@ -40,6 +42,32 @@ static std::wstring EscapeArchiveLabel(const std::wstring& name)
     return escaped;
 }
 
+static bool IsSplitEggFile(const std::wstring& path)
+{
+    const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    std::array<BYTE, 65536> data{};
+    DWORD size = 0;
+    const bool read = ReadFile(file, data.data(), static_cast<DWORD>(data.size()), &size, nullptr) != FALSE;
+    CloseHandle(file);
+    const auto dword = [&](size_t offset) { DWORD value; std::memcpy(&value, data.data() + offset, sizeof(value)); return value; };
+    if (!read || size < 18 || dword(0) != 0x41474745 || data[4] != 0 || data[5] != 1) return false;
+    for (size_t offset = 14; offset + 7 <= size;) {
+        const DWORD magic = dword(offset);
+        if (magic == 0x08e28222) return false;
+        const BYTE flags = data[offset + 4];
+        const size_t prefix = (flags & 1) ? 9 : 7;
+        if (offset + prefix > size) return false;
+        const DWORD length = (flags & 1) ? dword(offset + 5) : static_cast<DWORD>(data[offset + 5] | (data[offset + 6] << 8));
+        offset += prefix;
+        if (length > size - offset) return false;
+        if (magic == 0x24f5a262 && flags == 0 && length == 8) return dword(offset) != 0 || dword(offset + 4) != 0;
+        offset += length;
+    }
+    return false;
+}
+
 // Match Engine.ArchiveStem, including compressed TARs and normalized split volumes.
 static std::wstring ExtractFolderLabel(const std::wstring& path)
 {
@@ -49,7 +77,7 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
     const auto marker = lower.ends_with(L".rar") ? L".part" : L".vol";
     const auto part = lower.rfind(marker);
     const auto digits = part == std::wstring::npos ? part : part + std::wcslen(marker);
-    if ((lower.ends_with(L".rar") || lower.ends_with(L".egg")) && part != std::wstring::npos && digits < lower.size() - 4 &&
+    if ((lower.ends_with(L".rar") || (lower.ends_with(L".egg") && IsSplitEggFile(path))) && part != std::wstring::npos && digits < lower.size() - 4 &&
         std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
         name.resize(part);
     } else {
@@ -69,7 +97,13 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
         }
     }
     if (name.empty()) name = L"archive";
-    return L"\"" + EscapeArchiveLabel(name) + L"\\\" 에 풀기";
+    const auto parent = std::filesystem::path(path).parent_path();
+    for (int i = 1; i <= 10000; ++i) {
+        const auto candidate = name + (i == 1 ? L"" : L" (" + std::to_wstring(i) + L")");
+        if (GetFileAttributesW((parent / candidate).c_str()) != INVALID_FILE_ATTRIBUTES) continue;
+        return L"\"" + EscapeArchiveLabel(candidate) + L"\\\" 에 풀기";
+    }
+    return {};
 }
 
 // Keep the displayed output name consistent with Engine.QuickArchivePath.
@@ -207,7 +241,10 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
     bool nativeArchivesOnly = true;
     DWORD bandizipFormats = 0, bytes = sizeof(bandizipFormats);
     if (RegGetValueW(HKEY_CURRENT_USER, kOptionsKey, L"BandizipFormatsV1", RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
-        nullptr, &bandizipFormats, &bytes) != ERROR_SUCCESS) bandizipFormats = 0;
+        nullptr, &bandizipFormats, &bytes) != ERROR_SUCCESS) bandizipFormats = 3;
+    DWORD bandizipEnabled = 0; bytes = sizeof(bandizipEnabled);
+    if (RegGetValueW(HKEY_CURRENT_USER, kOptionsKey, L"BandizipEnabledV1", RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
+        nullptr, &bandizipEnabled, &bytes) != ERROR_SUCCESS || bandizipEnabled != 1) bandizipFormats = 0;
     for (const auto& path : paths) {
         const DWORD attributes = GetFileAttributesW(path.c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES) return {};
@@ -226,8 +263,10 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
         const bool singleFile = paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
         if ((op == Operation::Open || command.group == 1) && !singleFile) continue;
         if ((op == Operation::Open || op == Operation::ExtractDialog || op == Operation::ExtractHere || op == Operation::Test) && !nativeArchivesOnly) continue;
-        if (op == Operation::ExtractToFolder && paths.size() == 1)
+        if (op == Operation::ExtractToFolder && paths.size() == 1) {
             command.title = ExtractFolderLabel(paths[0]);
+            if (command.title.empty()) continue;
+        }
         if (op == Operation::QuickZip || op == Operation::Quick7z) {
             command.title = QuickArchiveName(paths, op == Operation::QuickZip ? L".zip" : L".7z");
             if (command.title.empty()) continue;

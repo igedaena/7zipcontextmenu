@@ -32,7 +32,7 @@ $fontExisted = $existing -and $existing.GetValueNames() -contains 'FontSizeV1'
 $savedFont = $null; $savedFontKind = $null
 if ($fontExisted) { $savedFont = $existing.GetValue('FontSizeV1'); $savedFontKind = $existing.GetValueKind('FontSizeV1') }
 $savedBandizip = @{}
-foreach ($name in @('BandizipFormatsV1','BandizipPathV1')) {
+foreach ($name in @('BandizipFormatsV1','BandizipPathV1','BandizipEnabledV1')) {
     if ($existing -and $existing.GetValueNames() -contains $name) { $savedBandizip[$name] = @{Value=$existing.GetValue($name);Kind=$existing.GetValueKind($name)} }
 }
 if ($existing) { $existing.Dispose() }
@@ -40,7 +40,7 @@ $key = $hive.CreateSubKey($keyPath)
 try {
     $key.DeleteValue('MenuOrderV1',$false)
     $key.DeleteValue('FontSizeV1',$false)
-    foreach ($name in @('BandizipFormatsV1','BandizipPathV1')) { $key.DeleteValue($name,$false) }
+    foreach ($name in @('BandizipFormatsV1','BandizipPathV1','BandizipEnabledV1')) { $key.DeleteValue($name,$false) }
     $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     foreach ($fixture in @(
         @{Name='old'; Tool='26.4.0.0'; Engine='26.5.0.0'},
@@ -103,19 +103,39 @@ try {
             }
         }
         foreach ($flags in @(0,1,2,3)) {
+            $key.SetValue('BandizipEnabledV1',1,[Microsoft.Win32.RegistryValueKind]::DWord)
             $key.SetValue('BandizipFormatsV1',$flags,[Microsoft.Win32.RegistryValueKind]::DWord)
-            foreach ($fixture in @(@{Name='bundle.alz';Bit=1},@{Name='bundle.a00';Bit=1},@{Name='bundle.egg';Bit=2},@{Name='bundle.vol2.egg';Bit=2})) {
+            foreach ($fixture in @(@{Name='bundle.alz';Bit=1},@{Name='bundle.a00';Bit=1},@{Name='bundle.egg';Bit=2},@{Name='bundle.vol2.egg';Bit=2},@{Name='standalone.vol2.egg';Bit=2})) {
                 $fixturePath = Join-Path $testRoot $fixture.Name; [IO.File]::WriteAllText($fixturePath,'menu fixture')
+                if ($fixture.Name -eq 'bundle.vol2.egg') {
+                    $writer = [IO.BinaryWriter]::new([IO.File]::Create($fixturePath))
+                    try {
+                        $writer.Write([uint32]0x41474745); $writer.Write([uint16]256); $writer.Write([uint32]2); $writer.Write([uint32]0)
+                        $writer.Write([uint32]0x24f5a262); $writer.Write([byte]0); $writer.Write([uint16]8); $writer.Write([uint32]1); $writer.Write([uint32]0)
+                        $writer.Write([uint32]0x08e28222)
+                    } finally { $writer.Dispose() }
+                }
                 $state = if ($flags -band $fixture.Bit) { 'on' } else { 'disabled' }
+                $kind = if ($fixture.Name -eq 'standalone.vol2.egg') { 'standalone' } else { 'bandi' }
                 foreach ($layout in @('direct','cascade')) {
                     $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
-                    & $probe $dll ('options-'+$layout+'-icons-bandizip-'+$state+'-extract-bandi') 0 $fixturePath
+                    & $probe $dll ('options-'+$layout+'-icons-bandizip-'+$state+'-extract-'+$kind) 0 $fixturePath
                     if ($LASTEXITCODE -ne 0) { throw 'Bandizip menu selection failed' }
                     $count++
                 }
             }
         }
         $key.DeleteValue('BandizipFormatsV1',$false)
+        $key.DeleteValue('BandizipEnabledV1',$false)
+        $collisionArchive = Join-Path $testRoot 'folder-target.zip'; [IO.File]::WriteAllText($collisionArchive,'menu fixture')
+        [IO.File]::WriteAllText((Join-Path $testRoot 'folder-target'),'existing file')
+        [void][IO.Directory]::CreateDirectory((Join-Path $testRoot 'folder-target (2)'))
+        foreach ($layout in @('direct','cascade')) {
+            $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
+            & $probe $dll ('options-'+$layout+'-icons-extract-collision') 0 $collisionArchive
+            if ($LASTEXITCODE -ne 0) { throw 'Extraction label collision failed' }
+            $count++
+        }
         # Bad settings fall back to defaults in the DLL, not an empty menu.
         $preview = Join-Path $testRoot 'preview.txt'; [IO.File]::WriteAllText($preview,'preview')
         [IO.File]::WriteAllText((Join-Path $testRoot 'preview.zip'),'existing ZIP')
@@ -210,7 +230,7 @@ try {
     if ($valueExisted) { $key.SetValue('OptionsV1',$savedValue,$savedKind) } else { $key.DeleteValue('OptionsV1',$false) }
     if ($orderExisted) { $key.SetValue('MenuOrderV1',$savedOrder,$savedOrderKind) } else { $key.DeleteValue('MenuOrderV1',$false) }
     if ($fontExisted) { $key.SetValue('FontSizeV1',$savedFont,$savedFontKind) } else { $key.DeleteValue('FontSizeV1',$false) }
-    foreach ($name in @('BandizipFormatsV1','BandizipPathV1')) {
+    foreach ($name in @('BandizipFormatsV1','BandizipPathV1','BandizipEnabledV1')) {
         if ($savedBandizip.ContainsKey($name)) { $key.SetValue($name,$savedBandizip[$name].Value,$savedBandizip[$name].Kind) } else { $key.DeleteValue($name,$false) }
     }
     $empty = $key.GetValueNames().Count -eq 0 -and $key.GetSubKeyNames().Count -eq 0

@@ -33,11 +33,13 @@ function Check([bool]$Condition,[string]$Name) { if(-not $Condition){throw "FAIL
 function Invoke-Menu([string]$Root,[string]$Action,[switch]$Fail,[switch]$ExpectFailure) {
     $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'scripts\Portable-Menu.ps1'),'-Action',$Action,'-TestRegistryRoot',$testBase)
     if($Fail){$params+='-TestFailAfterFirstView'}
+    if($Action -eq 'Status'){$params+='-AsJson'}
     $savedPreference=$ErrorActionPreference
     try { $ErrorActionPreference='Continue'; $output=& powershell.exe @params 2>&1; $code=$LASTEXITCODE }
     finally { $ErrorActionPreference=$savedPreference }
     if($ExpectFailure){Check ($code -ne 0) ('Refused/rolled back: '+$Action);return}
     if($code -ne 0){throw ($output -join "`n")}
+    if($Action -eq 'Status'){return ($output -join "`n" | ConvertFrom-Json)}
 }
 function Read-Value([string]$Path,[string]$Name='') {
     $key=$hive.OpenSubKey($testBase+'\'+$Path)
@@ -71,6 +73,18 @@ try {
     Check (Test-Path -LiteralPath (Join-Path $moved 'SevenZipContextWorker.exe')) 'Unregister preserves program files'
     Invoke-Menu $moved Unregister
     Check $true 'Repeated unregister'
+    Invoke-Menu $package Register
+    Set-TestValue "Machine\Registry64\Classes\CLSID\$classId" '' 'Installed public version'
+    $status = Invoke-Menu $package Status
+    Check (-not $status.CanRegister -and $status.CanUnregister -and -not $status.CanOptions) 'Installed conflict permits removing owned portable registration'
+    Invoke-Menu $package Unregister
+    $hive.DeleteSubKeyTree($testBase+'\Machine',$false)
+    Invoke-Menu $package Register
+    Set-TestValue "Registry32\Classes\CLSID\$classId\InprocServer32" '' 'C:\foreign.dll'
+    $status = Invoke-Menu $package Status
+    Check (-not $status.CanRegister -and -not $status.CanUnregister -and -not $status.CanOptions) 'Mismatched DLL ownership disables unavailable actions'
+    Set-TestValue "Registry32\Classes\CLSID\$classId\InprocServer32" '' (Join-Path $package 'x86\SevenZipContextMenu.dll')
+    Invoke-Menu $package Unregister
     $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     $uiTest=Join-Path $caseRoot 'portable_ui_tests.exe'
     & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')

@@ -1,4 +1,4 @@
-# Copyright (C) 2026 igedaena
+﻿# Copyright (C) 2026 igedaena
 # SPDX-License-Identifier: GPL-3.0-or-later
 [CmdletBinding()]
 param()
@@ -10,7 +10,7 @@ $hive = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive
 $keyPath = 'Software\SevenZipContextMenu'
 $key = $hive.CreateSubKey($keyPath)
 $saved = @{}
-foreach ($name in @('BandizipPathV1','BandizipFormatsV1')) {
+foreach ($name in @('BandizipPathV1','BandizipFormatsV1','BandizipEnabledV1')) {
     if ($key.GetValueNames() -contains $name) { $saved[$name] = @{Value=$key.GetValue($name);Kind=$key.GetValueKind($name)} }
 }
 try {
@@ -22,7 +22,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Bandizip extraction tests failed' }
     [pscustomobject]@{Success=$true;TestRoot=$testRoot;PublicInstallationChanged=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\bandizip-test-results.json') -Encoding UTF8
 } finally {
-    foreach ($name in @('BandizipPathV1','BandizipFormatsV1')) {
+    foreach ($name in @('BandizipPathV1','BandizipFormatsV1','BandizipEnabledV1')) {
         if ($saved.ContainsKey($name)) { $key.SetValue($name,$saved[$name].Value,$saved[$name].Kind) } else { $key.DeleteValue($name,$false) }
     }
     $key.Dispose(); $hive.Dispose()

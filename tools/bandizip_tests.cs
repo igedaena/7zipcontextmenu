@@ -26,12 +26,16 @@ internal static class BandizipTests
         return ~crc;
     }
     // Original stored-data fixtures, containing only the test's own text.
-    private static void Fixture(string file, bool egg, byte[] data)
+    private static void Fixture(string file, bool egg, byte[] data, uint id = 1, uint previous = 0, uint next = 0)
     {
         byte[] name = Encoding.ASCII.GetBytes("result.txt");
         using (var writer = new BinaryWriter(File.Create(file))) {
             if (egg) {
-                writer.Write(0x41474745U); writer.Write((ushort)256); writer.Write(1U); writer.Write(0U); writer.Write(0x08e28222U);
+                writer.Write(0x41474745U); writer.Write((ushort)256); writer.Write(id); writer.Write(0U);
+                if (previous != 0 || next != 0) {
+                    writer.Write(0x24f5a262U); writer.Write((byte)0); writer.Write((ushort)8); writer.Write(previous); writer.Write(next);
+                }
+                writer.Write(0x08e28222U);
                 writer.Write(0x0a8590e3U); writer.Write(0U); writer.Write((long)data.Length);
                 writer.Write(0x0a8591acU); writer.Write((byte)0); writer.Write((ushort)name.Length); writer.Write(name);
                 writer.Write(0x2c86950bU); writer.Write((byte)0); writer.Write((ushort)9); writer.Write(DateTime.UtcNow.ToFileTimeUtc()); writer.Write((byte)0); writer.Write(0x08e28222U);
@@ -59,6 +63,7 @@ internal static class BandizipTests
             using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
             using (var key = hive.CreateSubKey(OptionsStore.KeyPath)) {
                 key.SetValue("BandizipPathV1", installed); key.SetValue("BandizipFormatsV1", 3);
+                key.SetValue("BandizipEnabledV1", 1);
                 byte[] content = Encoding.UTF8.GetBytes("original Bandizip fallback fixture\r\n");
                 foreach (bool egg in new[] { false, true }) {
                     string file = Path.Combine(root, egg ? "한글 & EGG.egg" : "한글 & ALZ.alz"); Fixture(file, egg, content);
@@ -98,10 +103,20 @@ internal static class BandizipTests
                     var gui = new Engine(CancellationToken.None, null, delegate { }, true).Run(new Request { Operation = Operation.ExtractToFolder, Paths = new[] { encryptedEgg } });
                     Check(monitor.Error == null && monitor.CancelSent && gui.Cancelled && !gui.HasErrors && !Directory.Exists(Path.Combine(root, "encrypted")), "Bandizip native cancellation cleans output without a second error popup");
                 }
-                string volume = Path.Combine(root, "split.vol1.egg"); Fixture(volume, true, content);
-                string later = Path.Combine(root, "split.vol2.egg"); File.WriteAllText(later, "volume placeholder");
+                string volume = Path.Combine(root, "split.vol1.egg"); Fixture(volume, true, content, 1, 0, 2);
+                string later = Path.Combine(root, "split.vol2.egg"); Fixture(later, true, content, 2, 1, 0);
                 var normalized = Engine.NormalizeInputs(new Request { Operation = Operation.ExtractToFolder, Paths = new[] { volume, later } });
                 Check(normalized.Length == 1 && normalized[0] == volume && Engine.ArchiveStem(volume) == "split", "EGG volumes normalize to one input and output name");
+                string standalone = Path.Combine(root, "standalone.vol2.egg"); Fixture(standalone, true, content);
+                Fixture(Path.Combine(root, "standalone.vol1.egg"), true, Encoding.UTF8.GetBytes("different archive"));
+                normalized = Engine.NormalizeInputs(new Request { Operation = Operation.ExtractToFolder, Paths = new[] { standalone } });
+                Check(normalized.Single() == standalone && Engine.ArchiveStem(standalone) == "standalone.vol2", "A standalone archive with a volume-like name stays selected");
+                Fixture(Path.Combine(root, "mismatch.vol1.egg"), true, content, 10, 0, 20);
+                string mismatch = Path.Combine(root, "mismatch.vol2.egg"); Fixture(mismatch, true, content, 22, 11, 0);
+                bool rejected = false;
+                try { Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { mismatch } }); }
+                catch (InvalidDataException) { rejected = true; }
+                Check(rejected, "Unrelated first volumes cannot replace the selected EGG archive");
                 string alz = Path.Combine(root, "split.alz"); Fixture(alz, false, content);
                 string a00 = Path.Combine(root, "split.a00"); File.WriteAllText(a00, "volume placeholder");
                 normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { alz, a00 } });
@@ -110,7 +125,7 @@ internal static class BandizipTests
                     cancel.Cancel(); var result = new Engine(cancel.Token, null, delegate { }).Run(new Request { Operation = Operation.SmartExtract, Paths = new[] { alz } });
                     Check(result.Cancelled && !result.HasErrors, "Cancellation does not start the external program or request an error dialog");
                 }
-                key.SetValue("BandizipFormatsV1", 0);
+                key.SetValue("BandizipEnabledV1", 0);
                 Check(Run(Operation.SmartExtract, alz).HasErrors, "Disabling integration rejects external formats");
                 Check(!Directory.GetDirectories(root, ".7ze-work-*").Any(), "All external extraction paths clean staging folders");
             }

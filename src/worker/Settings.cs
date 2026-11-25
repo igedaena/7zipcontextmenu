@@ -25,8 +25,37 @@ namespace SevenZipContextMenu
 {
     internal sealed class BandizipOptions
     {
-        internal int Formats;
+        internal bool Enabled;
+        internal int Formats = 3;
+        internal int ActiveFormats { get { return Enabled ? Formats : 0; } }
         internal string Executable = "";
+        internal static bool TryReadEggVolume(string file, out uint id, out uint previous, out uint next)
+        {
+            id = previous = next = 0;
+            try {
+                using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                using (var reader = new BinaryReader(stream)) {
+                    long limit = Math.Min(stream.Length, 65536);
+                    if (limit < 18 || reader.ReadUInt32() != 0x41474745 || reader.ReadUInt16() != 256) return false;
+                    id = reader.ReadUInt32(); reader.ReadUInt32();
+                    while (stream.Position + 4 <= limit) {
+                        uint magic = reader.ReadUInt32();
+                        if (magic == 0x08e28222 || stream.Position + 3 > limit) return false;
+                        byte flags = reader.ReadByte();
+                        if ((flags & 1) != 0 && stream.Position + 4 > limit) return false;
+                        uint length = (flags & 1) == 0 ? reader.ReadUInt16() : reader.ReadUInt32();
+                        if (length > limit - stream.Position) return false;
+                        if (magic == 0x24f5a262 && flags == 0 && length == 8) {
+                            previous = reader.ReadUInt32(); next = reader.ReadUInt32();
+                            return previous != 0 || next != 0;
+                        }
+                        stream.Position += length;
+                    }
+                }
+            } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return false;
+        }
         internal static bool Supports(string path, int formats)
         {
             return ((formats & 1) != 0 && (path.EndsWith(".alz", StringComparison.OrdinalIgnoreCase) ||
@@ -41,7 +70,9 @@ namespace SevenZipContextMenu
                 using (var key = hive.OpenSubKey(OptionsStore.KeyPath)) {
                     if (key == null) return result;
                     object formats = key.GetValue("BandizipFormatsV1");
-                    result.Formats = formats is int ? (int)formats & 3 : 0;
+                    result.Formats = formats is int ? (int)formats & 3 : 3;
+                    object enabled = key.GetValue("BandizipEnabledV1");
+                    result.Enabled = enabled is int && (int)enabled == 1;
                     result.Executable = key.GetValue("BandizipPathV1") as string ?? "";
                 }
             } catch (IOException) { }
@@ -97,13 +128,12 @@ namespace SevenZipContextMenu
         internal static void Write(uint value, uint[] order, int fontSize, BandizipOptions bandizip)
         {
             if (fontSize < 9 || fontSize > 18) throw new ArgumentOutOfRangeException("fontSize");
-            if (bandizip.Formats != 0) BandizipOptions.Validate(bandizip.Executable);
             RuntimeSafety.EnsureStandardUser();
             using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
             using (var key = hive.CreateSubKey(KeyPath)) {
-                string[] names = { "FontSizeV1", "BandizipFormatsV1", "BandizipPathV1" };
-                object[] values = { fontSize, bandizip.Formats, bandizip.Executable };
-                RegistryValueKind[] kinds = { RegistryValueKind.DWord, RegistryValueKind.DWord, RegistryValueKind.String };
+                string[] names = { "FontSizeV1", "BandizipFormatsV1", "BandizipPathV1", "BandizipEnabledV1" };
+                object[] values = { fontSize, bandizip.Formats, bandizip.Executable, bandizip.Enabled ? 1 : 0 };
+                RegistryValueKind[] kinds = { RegistryValueKind.DWord, RegistryValueKind.DWord, RegistryValueKind.String, RegistryValueKind.DWord };
                 object[] previous = names.Select(name => key.GetValue(name)).ToArray();
                 var previousKinds = names.Select((name, i) => previous[i] == null ? RegistryValueKind.None : key.GetValueKind(name)).ToArray();
                 try {
@@ -285,9 +315,9 @@ namespace SevenZipContextMenu
             integration.SizeChanged += delegate { integrationHelp.MaximumSize = new Size(Math.Max(100, integration.ClientSize.Width - 12), 0); };
             bandizipTab.Controls.Add(integration);
             savedBandizip = BandizipOptions.Read();
-            UseBandizip.Checked = savedBandizip.Formats != 0;
-            BandizipAlz.Checked = savedBandizip.Formats == 0 || (savedBandizip.Formats & 1) != 0;
-            BandizipEgg.Checked = savedBandizip.Formats == 0 || (savedBandizip.Formats & 2) != 0;
+            UseBandizip.Checked = savedBandizip.Enabled;
+            BandizipAlz.Checked = (savedBandizip.Formats & 1) != 0;
+            BandizipEgg.Checked = (savedBandizip.Formats & 2) != 0;
             BandizipPath.Text = savedBandizip.Executable;
             UseBandizip.CheckedChanged += delegate { UpdateBandizipControls(); UpdateDirty(); };
             BandizipAlz.CheckedChanged += delegate { UpdateDirty(); };
@@ -351,7 +381,7 @@ namespace SevenZipContextMenu
         }
         private BandizipOptions ReadBandizipControls()
         {
-            return new BandizipOptions { Formats = UseBandizip.Checked ? (BandizipAlz.Checked ? 1 : 0) | (BandizipEgg.Checked ? 2 : 0) : 0,
+            return new BandizipOptions { Enabled = UseBandizip.Checked, Formats = (BandizipAlz.Checked ? 1 : 0) | (BandizipEgg.Checked ? 2 : 0),
                 Executable = BandizipPath.Text.Trim() };
         }
         private void ResizeCommandList()
@@ -431,7 +461,7 @@ namespace SevenZipContextMenu
             if (loading || savedBandizip == null) return;
             BandizipOptions bandizip = ReadBandizipControls();
             Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || FontSize.Value != savedFontSize ||
-                bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable;
+                bandizip.Enabled != savedBandizip.Enabled || bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable;
         }
         private bool TrySave()
         {
@@ -445,6 +475,8 @@ namespace SevenZipContextMenu
             uint value = ReadControls(); uint[] order = ReadOrder(); int fontSize = (int)FontSize.Value;
             BandizipOptions bandizip = ReadBandizipControls();
             if (UseBandizip.Checked && bandizip.Formats == 0) throw new InvalidDataException("반디집으로 처리할 형식을 하나 이상 선택해 주세요.");
+            if (bandizip.Enabled && (!savedBandizip.Enabled || bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable))
+                BandizipOptions.Validate(bandizip.Executable);
             OptionsStore.Write(value, order, fontSize, bandizip);
             saved = value; savedOrder = order; savedFontSize = fontSize; savedBandizip = bandizip; return value;
         }
