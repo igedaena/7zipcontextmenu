@@ -45,6 +45,14 @@ internal static class OptionsTests
     private static int Main(string[] args)
     {
         try {
+            if (args.Length == 2 && args[0] == "--portable-settings-probe") {
+                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+                using (var form = new SettingsWindow()) {
+                    Check(form.Tabs.TabPages.Count == 2 && form.Tabs.TabPages[0].Text == "메뉴 설정" && form.Tabs.TabPages[1].Text == "반디집 연동",
+                        "The normal portable entry detects its payload and omits the duplicate appearance tab");
+                }
+                return 0;
+            }
             string root = args[0]; Directory.CreateDirectory(root);
             RuntimeSafety.EnsureStandardUser();
             foreach (string fixture in new[] { "old", "minimum", "future", "old-engine", "missing-engine", "unversioned" }) {
@@ -66,6 +74,7 @@ internal static class OptionsTests
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false;
                 form.Show(); Application.DoEvents();
                 Check(form.ReadControls() == OptionsStore.Defaults && !form.Apply.Enabled && form.ShowSettings.Checked, "Existing settings keep the settings entry visible");
+                Check(form.Tabs.TabPages.Count == 3 && form.Tabs.TabPages[1].Text == "화면", "Installed settings expose their font control");
                 Check(form.CommandList.Height >= 250 && form.MoveUp.Visible && form.MoveDown.Visible && form.ResetOrder.Visible,
                     "Order list has room for all commands and visible move buttons");
                 Check(form.CommandList.Parent.Parent.ClientSize.Height >= form.CommandList.Parent.Height,
@@ -186,6 +195,30 @@ internal static class OptionsTests
                 Check(AppearanceStore.ReadFontSize() == 12, "Cancelling local edits keeps the latest external font setting");
             }
             AppearanceStore.WriteFontSize(9);
+            using (var form = new SettingsWindow(true)) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                Check(form.Tabs.TabPages.Count == 2 && form.Tabs.TabPages[1].Text == "반디집 연동", "Portable settings contain only menu and Bandizip tabs");
+                AppearanceStore.WriteFontSize(14); form.Icons.Checked = !form.Icons.Checked; form.Save();
+                Check(AppearanceStore.ReadFontSize() == 14, "Saving portable menu edits preserves the launcher's latest font size");
+                form.Reset.PerformClick(); form.Save();
+                Check(AppearanceStore.ReadFontSize() == 14, "Portable reset preserves the independently managed font size");
+                SendMessage(form.Handle, 0x0006, IntPtr.Zero, IntPtr.Zero); SendMessage(form.Handle, 0x0006, new IntPtr(1), IntPtr.Zero); Application.DoEvents();
+                Check(form.Font.Size == 14, "Portable settings still follow launcher font changes");
+                using (var bitmap = new Bitmap(form.Width, form.Height)) {
+                    form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height)); bitmap.Save(Path.Combine(root, "settings-portable.png"));
+                }
+                form.Cancel.PerformClick();
+            }
+            AppearanceStore.WriteFontSize(9);
+            string portableContext = Path.Combine(root, "portable-settings-context"); Directory.CreateDirectory(Path.Combine(portableContext, "scripts"));
+            string settingsProbe = Path.Combine(portableContext, "settings_probe.exe"); File.Copy(Application.ExecutablePath, settingsProbe);
+            File.WriteAllText(Path.Combine(portableContext, "SevenZipExtension.exe"), "payload marker");
+            File.WriteAllText(Path.Combine(portableContext, "scripts", "Portable-Menu.ps1"), "payload marker");
+            using (var process = Process.Start(new ProcessStartInfo(settingsProbe, "--portable-settings-probe " + Engine.QuoteArgument(root)) {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })) {
+                string output = process.StandardOutput.ReadToEnd(); string errors = process.StandardError.ReadToEnd(); process.WaitForExit();
+                Check(process.ExitCode == 0, "Portable payload detection works in a separate process: " + output + errors);
+            }
             string settingsTool = Path.Combine(root, "settings-tool", "Bandizip.exe");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsTool)); File.Copy(Application.ExecutablePath, settingsTool);
             using (var form = new SettingsWindow()) {

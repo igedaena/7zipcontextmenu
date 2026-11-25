@@ -116,9 +116,9 @@ namespace SevenZipContextMenu
         internal const uint HideSettings = 0x40000;
         internal const int DefaultFontSize = AppearanceStore.DefaultFontSize;
         internal static int ReadFontSize() { return AppearanceStore.ReadFontSize(); }
-        internal static void Write(uint value, uint[] order, int fontSize, BandizipOptions bandizip)
+        internal static void Write(uint value, uint[] order, int? fontSize, BandizipOptions bandizip)
         {
-            if (fontSize < 9 || fontSize > 18) throw new ArgumentOutOfRangeException("fontSize");
+            if (fontSize.HasValue && (fontSize.Value < 9 || fontSize.Value > 18)) throw new ArgumentOutOfRangeException("fontSize");
             RuntimeSafety.EnsureStandardUser();
             using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
             using (var key = hive.CreateSubKey(KeyPath)) {
@@ -128,11 +128,11 @@ namespace SevenZipContextMenu
                 object[] previous = names.Select(name => key.GetValue(name)).ToArray();
                 var previousKinds = names.Select((name, i) => previous[i] == null ? RegistryValueKind.None : key.GetValueKind(name)).ToArray();
                 try {
-                    for (int i = 0; i < names.Length; i++) key.SetValue(names[i], values[i], kinds[i]);
+                    for (int i = fontSize.HasValue ? 0 : 1; i < names.Length; i++) key.SetValue(names[i], values[i], kinds[i]);
                     Write(value, order);
                 }
                 catch {
-                    for (int i = 0; i < names.Length; i++) {
+                    for (int i = fontSize.HasValue ? 0 : 1; i < names.Length; i++) {
                         if (previous[i] == null) key.DeleteValue(names[i], false);
                         else key.SetValue(names[i], previous[i], previousKinds[i]);
                     }
@@ -237,9 +237,15 @@ namespace SevenZipContextMenu
         private uint[] savedOrder;
         private uint[] currentOrder = (uint[])OptionsStore.DefaultOrder.Clone();
         private bool loading;
+        private readonly bool portableMode;
 
-        internal SettingsWindow()
+        internal SettingsWindow() : this(
+            File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SevenZipExtension.exe")) &&
+            File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "Portable-Menu.ps1"))) { }
+
+        internal SettingsWindow(bool portableMode)
         {
+            this.portableMode = portableMode;
             Text = "7-Zip 확장 설정";
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             savedFontSize = OptionsStore.ReadFontSize();
@@ -283,12 +289,16 @@ namespace SevenZipContextMenu
             layout.SizeChanged += delegate { help.MaximumSize = new Size(Math.Max(100, layout.ClientSize.Width - 24), 0); };
             scroll.Controls.Add(layout);
             var menuTab = new TabPage("메뉴 설정") { Padding = new Padding(8) }; menuTab.Controls.Add(scroll);
-            var appearanceTab = new TabPage("화면") { Padding = new Padding(12), AutoScroll = true };
-            var appearance = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-            appearance.Controls.Add(new Label { Text = "옵션 페이지 글자 크기 (9~18 pt)", AutoSize = true });
-            FontSize.Value = savedFontSize; appearance.Controls.Add(FontSize);
-            appearance.Controls.Add(new Label { Text = "크기를 바꾸면 이 창에서 바로 미리 볼 수 있습니다.\r\n적용·확인을 누르면 저장하고, 취소하면 마지막 저장값을 유지합니다.", AutoSize = true });
-            appearanceTab.Controls.Add(appearance);
+            Tabs.TabPages.Add(menuTab);
+            FontSize.Value = savedFontSize;
+            if (!portableMode) {
+                var appearanceTab = new TabPage("화면") { Padding = new Padding(12), AutoScroll = true };
+                var appearance = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+                appearance.Controls.Add(new Label { Text = "옵션 페이지 글자 크기 (9~18 pt)", AutoSize = true });
+                appearance.Controls.Add(FontSize);
+                appearance.Controls.Add(new Label { Text = "크기를 바꾸면 이 창에서 바로 미리 볼 수 있습니다.\r\n적용·확인을 누르면 저장하고, 취소하면 마지막 저장값을 유지합니다.", AutoSize = true });
+                appearanceTab.Controls.Add(appearance); Tabs.TabPages.Add(appearanceTab);
+            }
             var bandizipTab = new TabPage("반디집 연동") { Padding = new Padding(12), AutoScroll = true };
             var integration = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
             integration.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -327,7 +337,7 @@ namespace SevenZipContextMenu
                 }
             };
             UpdateBandizipControls();
-            Tabs.TabPages.AddRange(new[] { menuTab, appearanceTab, bandizipTab }); Controls.Add(Tabs); Controls.Add(footer);
+            Tabs.TabPages.Add(bandizipTab); Controls.Add(Tabs); Controls.Add(footer);
             FontSize.ValueChanged += delegate {
                 Font oldFont = Font; Font = new Font("맑은 고딕", (float)FontSize.Value); oldFont.Dispose();
                 ResizeCommandList(); UpdateDirty();
@@ -365,7 +375,8 @@ namespace SevenZipContextMenu
             Apply.Click += delegate { TrySave(); };
             Ok.Click += delegate { if (TrySave()) { DialogResult = DialogResult.OK; Close(); } };
             Reset.Click += delegate {
-                LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder); FontSize.Value = OptionsStore.DefaultFontSize;
+                LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder);
+                if (!portableMode) FontSize.Value = OptionsStore.DefaultFontSize;
                 UseBandizip.Checked = false; BandizipAlz.Checked = true; BandizipEgg.Checked = true; BandizipPath.Text = "";
             };
             AcceptButton = Ok; CancelButton = Cancel;
@@ -400,7 +411,10 @@ namespace SevenZipContextMenu
         }
         protected override void Dispose(bool disposing)
         {
-            if (disposing) loading = true;
+            if (disposing) {
+                loading = true;
+                if (FontSize.Parent == null) FontSize.Dispose();
+            }
             base.Dispose(disposing);
         }
         private static GroupBox Group(string title, Control content)
@@ -464,7 +478,7 @@ namespace SevenZipContextMenu
         {
             if (loading || savedBandizip == null) return;
             BandizipOptions bandizip = ReadBandizipControls();
-            Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || FontSize.Value != savedFontSize ||
+            Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || (!portableMode && FontSize.Value != savedFontSize) ||
                 bandizip.Enabled != savedBandizip.Enabled || bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable;
         }
         private bool TrySave()
@@ -481,7 +495,7 @@ namespace SevenZipContextMenu
             if (UseBandizip.Checked && bandizip.Formats == 0) throw new InvalidDataException("반디집으로 처리할 형식을 하나 이상 선택해 주세요.");
             if (bandizip.Enabled && (!savedBandizip.Enabled || bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable))
                 BandizipOptions.Validate(bandizip.Executable);
-            OptionsStore.Write(value, order, fontSize, bandizip);
+            OptionsStore.Write(value, order, portableMode ? (int?)null : fontSize, bandizip);
             saved = value; savedOrder = order; savedFontSize = fontSize; savedBandizip = bandizip; return value;
         }
     }
