@@ -21,7 +21,7 @@ $testRoot=Join-Path $root ('.review\native-progress-'+[Guid]::NewGuid().ToString
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $exe=Join-Path $testRoot 'native_progress_tests.exe'
-& $compiler /nologo /target:exe /main:NativeProgressTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll /r:System.Management.dll ("/out:"+$exe) (Join-Path $root 'tools\native_progress_tests.cs') (Join-Path $root 'src\worker\Worker.cs') (Join-Path $root 'src\worker\Settings.cs') (Join-Path $root 'src\worker\NativeCommands.cs') (Join-Path $root 'src\worker\RuntimeSafety.cs')
+& $compiler /nologo /target:exe /main:NativeProgressTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll /r:System.Management.dll ("/out:"+$exe) (Join-Path $root 'tools\native_progress_tests.cs') (Join-Path $root 'src\worker\Worker.cs') (Join-Path $root 'src\worker\Settings.cs') (Join-Path $root 'src\worker\NativeCommands.cs') (Join-Path $root 'src\worker\RuntimeSafety.cs') (Join-Path $root 'src\worker\Appearance.cs')
 if($LASTEXITCODE -ne 0){throw 'Native progress test compilation failed'}
 & $exe $testRoot | Tee-Object -FilePath (Join-Path $testRoot 'native-progress.log')
 if($LASTEXITCODE -ne 0){throw ('Native progress tests failed: '+$testRoot)}

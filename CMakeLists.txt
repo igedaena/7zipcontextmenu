@@ -48,6 +48,7 @@ string(REPLACE "/" "\\" WORKER_NATIVE "${WORKER}")
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/app.manifest" MANIFEST_NATIVE)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/Worker.cs" SOURCE_NATIVE)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/Settings.cs" SETTINGS_NATIVE)
+file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/Appearance.cs" APPEARANCE_NATIVE)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/NativeCommands.cs" NATIVE_COMMANDS_NATIVE)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/RuntimeSafety.cs" SAFETY_NATIVE)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/sevenzip-extension.ico" ICON_NATIVE)
@@ -58,9 +59,9 @@ add_custom_command(OUTPUT "${WORKER}" "${WORKER}.config"
         /r:System.Core.dll /r:System.Xml.dll
         "/win32manifest:${MANIFEST_NATIVE}"
         "/win32icon:${ICON_NATIVE}"
-        "/out:${WORKER_NATIVE}" "${SOURCE_NATIVE}" "${SETTINGS_NATIVE}" "${NATIVE_COMMANDS_NATIVE}" "${SAFETY_NATIVE}"
+        "/out:${WORKER_NATIVE}" "${SOURCE_NATIVE}" "${SETTINGS_NATIVE}" "${APPEARANCE_NATIVE}" "${NATIVE_COMMANDS_NATIVE}" "${SAFETY_NATIVE}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/App.config" "${WORKER}.config"
-    DEPENDS src/worker/Worker.cs src/worker/Settings.cs src/worker/NativeCommands.cs src/worker/RuntimeSafety.cs src/worker/app.manifest src/worker/App.config assets/sevenzip-extension.ico VERBATIM)
+    DEPENDS src/worker/Worker.cs src/worker/Settings.cs src/worker/Appearance.cs src/worker/NativeCommands.cs src/worker/RuntimeSafety.cs src/worker/app.manifest src/worker/App.config assets/sevenzip-extension.ico VERBATIM)
 add_custom_target(worker ALL DEPENDS "${WORKER}" "${WORKER}.config")
 
 set(PORTABLE "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/SevenZipExtension.exe")
@@ -71,9 +72,9 @@ add_custom_command(OUTPUT "${PORTABLE}" "${PORTABLE}.config"
     COMMAND ${CMAKE_COMMAND} -E env --unset=LIB "${CSC}" /nologo /target:winexe /platform:anycpu /optimize+ /warnaserror+ /codepage:65001
         /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll
         "/win32manifest:${MANIFEST_NATIVE}" "/win32icon:${ICON_NATIVE}"
-        "/out:${PORTABLE_NATIVE}" "${PORTABLE_SOURCE_NATIVE}" "${SAFETY_NATIVE}"
+        "/out:${PORTABLE_NATIVE}" "${PORTABLE_SOURCE_NATIVE}" "${APPEARANCE_NATIVE}" "${SAFETY_NATIVE}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/src/worker/App.config" "${PORTABLE}.config"
-    DEPENDS src/portable/PortableWindow.cs src/worker/RuntimeSafety.cs src/worker/app.manifest src/worker/App.config assets/sevenzip-extension.ico VERBATIM)
+    DEPENDS src/portable/PortableWindow.cs src/worker/Appearance.cs src/worker/RuntimeSafety.cs src/worker/app.manifest src/worker/App.config assets/sevenzip-extension.ico VERBATIM)
 add_custom_target(portable_launcher ALL DEPENDS "${PORTABLE}" "${PORTABLE}.config")
 
 add_executable(shell_probe tools/shell_probe.cpp)

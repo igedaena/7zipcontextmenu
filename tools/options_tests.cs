@@ -20,10 +20,12 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 using SevenZipContextMenu;
 
 internal static class OptionsTests
 {
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr word, IntPtr value);
     private static void Check(bool condition, string message)
     { if (!condition) throw new Exception(message); Console.WriteLine("PASS: " + message); }
     private static string Cli(LaunchPlan plan)
@@ -164,6 +166,16 @@ internal static class OptionsTests
                 form.Reset.PerformClick(); form.Save();
                 Check(OptionsStore.ReadFontSize() == 9, "Reset restores the default font through save");
             }
+            using (var form = new SettingsWindow()) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                uint savedOptions = OptionsStore.Read(); form.Icons.Checked = !form.Icons.Checked;
+                form.Hide(); AppearanceStore.WriteFontSize(11); form.Show(); form.Activate(); Application.DoEvents();
+                SendMessage(form.Handle, 0x0006, new IntPtr(1), IntPtr.Zero); Application.DoEvents();
+                Check(form.FontSize.Value == 11 && form.Font.Size == 11 && form.Apply.Enabled && OptionsStore.Read() == savedOptions,
+                    "Returning to settings picks up external font changes and preserves unsaved menu edits");
+                form.Cancel.PerformClick();
+            }
+            AppearanceStore.WriteFontSize(9);
             string settingsTool = Path.Combine(root, "settings-tool", "Bandizip.exe");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsTool)); File.Copy(Application.ExecutablePath, settingsTool);
             using (var form = new SettingsWindow()) {

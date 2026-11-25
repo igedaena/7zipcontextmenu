@@ -109,24 +109,13 @@ namespace SevenZipContextMenu
 
     internal static class OptionsStore
     {
-        internal const string KeyPath = @"Software\SevenZipContextMenu";
+        internal const string KeyPath = AppearanceStore.KeyPath;
         internal const uint Defaults = 0x2000f;
         internal const uint Direct = 0x10000;
         internal const uint Icons = 0x20000;
         internal const uint HideSettings = 0x40000;
-        internal const int DefaultFontSize = 9;
-        internal static int ReadFontSize()
-        {
-            try {
-                using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
-                using (var key = hive.OpenSubKey(KeyPath)) {
-                    object value = key == null ? null : key.GetValue("FontSizeV1");
-                    return value is int && (int)value >= 9 && (int)value <= 18 ? (int)value : DefaultFontSize;
-                }
-            } catch (IOException) { return DefaultFontSize; }
-            catch (UnauthorizedAccessException) { return DefaultFontSize; }
-            catch (SecurityException) { return DefaultFontSize; }
-        }
+        internal const int DefaultFontSize = AppearanceStore.DefaultFontSize;
+        internal static int ReadFontSize() { return AppearanceStore.ReadFontSize(); }
         internal static void Write(uint value, uint[] order, int fontSize, BandizipOptions bandizip)
         {
             if (fontSize < 9 || fontSize > 18) throw new ArgumentOutOfRangeException("fontSize");
@@ -380,6 +369,12 @@ namespace SevenZipContextMenu
                 UseBandizip.Checked = false; BandizipAlz.Checked = true; BandizipEgg.Checked = true; BandizipPath.Text = "";
             };
             AcceptButton = Ok; CancelButton = Cancel;
+            Activated += delegate {
+                int points = AppearanceStore.ReadFontSize();
+                if (FontSize.Value == savedFontSize && points != savedFontSize) {
+                    savedFontSize = points; FontSize.Value = points;
+                }
+            };
             UpdateMoveButtons();
         }
         private void UpdateBandizipControls()

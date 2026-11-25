@@ -62,7 +62,7 @@ try {
         }
     }
     $exe = Join-Path $testRoot 'options_tests.exe'
-    & $compiler /nologo /target:exe /main:OptionsTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll "/out:$exe" (Join-Path $projectRoot 'tools\options_tests.cs') (Join-Path $projectRoot 'src\worker\Worker.cs') (Join-Path $projectRoot 'src\worker\Settings.cs') (Join-Path $projectRoot 'src\worker\NativeCommands.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')
+    & $compiler /nologo /target:exe /main:OptionsTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll "/out:$exe" (Join-Path $projectRoot 'tools\options_tests.cs') (Join-Path $projectRoot 'src\worker\Worker.cs') (Join-Path $projectRoot 'src\worker\Settings.cs') (Join-Path $projectRoot 'src\worker\NativeCommands.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs') (Join-Path $projectRoot 'src\worker\Appearance.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Options test build failed' }
     & $exe $testRoot | Tee-Object -FilePath (Join-Path $testRoot 'worker-tests.log')
     if ($LASTEXITCODE -ne 0) { throw 'Options worker/UI tests failed' }

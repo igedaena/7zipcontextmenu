@@ -102,7 +102,7 @@ try {
     $hive.DeleteSubKeyTree($testBase+'\Machine',$false)
     $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     $uiTest=Join-Path $caseRoot 'portable_ui_tests.exe'
-    & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')
+    & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs') (Join-Path $projectRoot 'src\worker\Appearance.cs')
     if($LASTEXITCODE -ne 0){throw 'Portable UI test compilation failed'}
     & $uiTest $moved $testBase $caseRoot
     if($LASTEXITCODE -ne 0){throw 'Portable UI state transitions failed'}

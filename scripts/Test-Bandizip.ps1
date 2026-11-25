@@ -16,7 +16,7 @@ foreach ($name in @('BandizipPathV1','BandizipFormatsV1','BandizipEnabledV1')) {
 try {
     $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     $exe = Join-Path $testRoot 'bandizip_tests.exe'
-    & $compiler /nologo /target:exe /main:BandizipTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll /r:System.Management.dll ("/out:"+$exe) (Join-Path $projectRoot 'tools\bandizip_tests.cs') (Join-Path $projectRoot 'tools\native_progress_tests.cs') (Join-Path $projectRoot 'src\worker\Worker.cs') (Join-Path $projectRoot 'src\worker\Settings.cs') (Join-Path $projectRoot 'src\worker\NativeCommands.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')
+    & $compiler /nologo /target:exe /main:BandizipTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll /r:System.Management.dll ("/out:"+$exe) (Join-Path $projectRoot 'tools\bandizip_tests.cs') (Join-Path $projectRoot 'tools\native_progress_tests.cs') (Join-Path $projectRoot 'src\worker\Worker.cs') (Join-Path $projectRoot 'src\worker\Settings.cs') (Join-Path $projectRoot 'src\worker\NativeCommands.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs') (Join-Path $projectRoot 'src\worker\Appearance.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Bandizip test compilation failed' }
     & $exe $testRoot | Tee-Object -FilePath (Join-Path $testRoot 'bandizip-tests.log')
     if ($LASTEXITCODE -ne 0) { throw 'Bandizip extraction tests failed' }
