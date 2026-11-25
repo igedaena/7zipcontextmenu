@@ -144,6 +144,26 @@ internal static class OptionsTests
                 form.Ok.PerformClick();
                 Check(OptionsStore.ReadOrder().SequenceEqual(defaultOrder) && form.DialogResult == DialogResult.OK, "OK saves restored order");
             }
+            using (var form = new SettingsWindow()) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                Check(form.FontSize.Value == 9 && form.Font.Size == 9, "Old settings default to 9pt");
+                form.FontSize.Value = 18; Application.DoEvents();
+                Check(form.Font.Size == 18 && form.Apply.Enabled && OptionsStore.ReadFontSize() == 9, "Font changes preview without saving");
+                Check(form.Ok.Bottom <= form.Ok.Parent.ClientSize.Height && form.CommandList.Height >= 250, "Large font keeps action buttons and menu list accessible");
+                form.Tabs.SelectedIndex = 1; Application.DoEvents();
+                using (var bitmap = new Bitmap(form.Width, form.Height)) {
+                    form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height)); bitmap.Save(Path.Combine(root, "settings-font-18.png"));
+                }
+                form.Apply.PerformClick();
+                Check(OptionsStore.ReadFontSize() == 18 && !form.Apply.Enabled, "Apply stores the previewed font size");
+                form.FontSize.Value = 12; form.Cancel.PerformClick();
+            }
+            using (var form = new SettingsWindow()) {
+                Check(form.FontSize.Value == 18 && form.Font.Size == 18, "Reopening preserves applied font and discards cancelled edits");
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                form.Reset.PerformClick(); form.Save();
+                Check(OptionsStore.ReadFontSize() == 9, "Reset restores the default font through save");
+            }
             string sevenZip = Path.GetDirectoryName(Engine.FindSevenZip());
             foreach (string name in new[] { "7z.exe", "7zG.exe", "7zFM.exe" }) {
                 RuntimeSafety.RequireSupportedSevenZip(Path.Combine(sevenZip, name));

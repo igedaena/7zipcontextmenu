@@ -28,10 +28,14 @@ if ($valueExisted) { $savedValue = $existing.GetValue('OptionsV1'); $savedKind =
 $orderExisted = $existing -and $existing.GetValueNames() -contains 'MenuOrderV1'
 $savedOrder = $null; $savedOrderKind = $null
 if ($orderExisted) { $savedOrder = $existing.GetValue('MenuOrderV1'); $savedOrderKind = $existing.GetValueKind('MenuOrderV1') }
+$fontExisted = $existing -and $existing.GetValueNames() -contains 'FontSizeV1'
+$savedFont = $null; $savedFontKind = $null
+if ($fontExisted) { $savedFont = $existing.GetValue('FontSizeV1'); $savedFontKind = $existing.GetValueKind('FontSizeV1') }
 if ($existing) { $existing.Dispose() }
 $key = $hive.CreateSubKey($keyPath)
 try {
     $key.DeleteValue('MenuOrderV1',$false)
+    $key.DeleteValue('FontSizeV1',$false)
     $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     foreach ($fixture in @(
         @{Name='old'; Tool='26.4.0.0'; Engine='26.5.0.0'},
@@ -186,6 +190,7 @@ try {
 } finally {
     if ($valueExisted) { $key.SetValue('OptionsV1',$savedValue,$savedKind) } else { $key.DeleteValue('OptionsV1',$false) }
     if ($orderExisted) { $key.SetValue('MenuOrderV1',$savedOrder,$savedOrderKind) } else { $key.DeleteValue('MenuOrderV1',$false) }
+    if ($fontExisted) { $key.SetValue('FontSizeV1',$savedFont,$savedFontKind) } else { $key.DeleteValue('FontSizeV1',$false) }
     $empty = $key.GetValueNames().Count -eq 0 -and $key.GetSubKeyNames().Count -eq 0
     $key.Dispose()
     if (-not $keyExisted -and $empty) { $hive.DeleteSubKey($keyPath,$false) }

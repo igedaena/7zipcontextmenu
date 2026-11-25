@@ -30,6 +30,36 @@ namespace SevenZipContextMenu
         internal const uint Direct = 0x10000;
         internal const uint Icons = 0x20000;
         internal const uint HideSettings = 0x40000;
+        internal const int DefaultFontSize = 9;
+        internal static int ReadFontSize()
+        {
+            try {
+                using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
+                using (var key = hive.OpenSubKey(KeyPath)) {
+                    object value = key == null ? null : key.GetValue("FontSizeV1");
+                    return value is int && (int)value >= 9 && (int)value <= 18 ? (int)value : DefaultFontSize;
+                }
+            } catch (IOException) { return DefaultFontSize; }
+            catch (UnauthorizedAccessException) { return DefaultFontSize; }
+            catch (SecurityException) { return DefaultFontSize; }
+        }
+        internal static void Write(uint value, uint[] order, int fontSize)
+        {
+            if (fontSize < 9 || fontSize > 18) throw new ArgumentOutOfRangeException("fontSize");
+            RuntimeSafety.EnsureStandardUser();
+            using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
+            using (var key = hive.CreateSubKey(KeyPath)) {
+                object previous = key.GetValue("FontSizeV1");
+                RegistryValueKind kind = previous == null ? RegistryValueKind.None : key.GetValueKind("FontSizeV1");
+                key.SetValue("FontSizeV1", fontSize, RegistryValueKind.DWord);
+                try { Write(value, order); }
+                catch {
+                    if (previous == null) key.DeleteValue("FontSizeV1", false);
+                    else key.SetValue("FontSizeV1", previous, kind);
+                    throw;
+                }
+            }
+        }
         // Stable option IDs, shared with ReadMenuOrder in MenuModel.cpp.
         internal static readonly uint[] DefaultOrder = { 16, 32, 64, 128, 1, 2, 256, 512, 1024, 2048, 4, 8, 4096 };
         internal static uint[] NormalizeOrder(string[] entries)
@@ -114,6 +144,9 @@ namespace SevenZipContextMenu
         internal readonly Button Reset = new Button { Text = "기본값 복원", AutoSize = true };
         internal readonly Button Ok = new Button { Text = "확인", AutoSize = true };
         internal readonly Button Cancel = new Button { Text = "취소", AutoSize = true, DialogResult = DialogResult.Cancel };
+        internal readonly NumericUpDown FontSize = new NumericUpDown { Minimum = 9, Maximum = 18, Value = 9, Width = 90 };
+        internal readonly TabControl Tabs = new TabControl { Dock = DockStyle.Fill };
+        private int savedFontSize;
         private uint saved;
         private uint enabledCommands;
         private uint[] savedOrder;
@@ -124,11 +157,12 @@ namespace SevenZipContextMenu
         {
             Text = "7-Zip 확장 설정";
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            Font = new Font("맑은 고딕", 9F);
+            savedFontSize = OptionsStore.ReadFontSize();
+            Font = new Font("맑은 고딕", savedFontSize);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(720, 780); MinimumSize = new Size(650, 620);
             StartPosition = FormStartPosition.CenterScreen; Padding = new Padding(16);
-            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, Padding = new Padding(0, 8, 0, 0) };
             footer.Controls.AddRange(new Control[] { Apply, Cancel, Ok, Reset });
             var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
             var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(0, 0, 12, 0) };
@@ -152,15 +186,37 @@ namespace SevenZipContextMenu
             Add(8, "이름으로 7z 압축하기 / 각각 7z 압축하기", true);
             Add(4096, "CRC / SHA ▶", false);
             var orderPanel = new Panel { Dock = DockStyle.Fill, Height = 340, MinimumSize = new Size(0, 340) };
-            var orderButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, Padding = new Padding(0, 6, 0, 0) };
+            var orderButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
             orderButtons.Controls.AddRange(new Control[] { MoveUp, MoveDown, ResetOrder });
             orderPanel.Controls.Add(CommandList); orderPanel.Controls.Add(orderButtons);
             var orderGroup = Group("표시할 기능과 순서", orderPanel);
             // Docked panels do not contribute their height to GroupBox.PreferredSize.
             orderGroup.AutoSize = false; orderGroup.Height = 380; orderGroup.MinimumSize = new Size(0, 380);
             layout.Controls.Add(orderGroup);
-            layout.Controls.Add(new Label { Text = "항목을 선택하고 위로·아래로 이동하면 실제 메뉴에도 같은 순서로 적용됩니다.\r\n체크를 꺼도 위치는 유지하며, 선택한 파일·폴더에 맞는 명령만 표시합니다.\r\n‘7-Zip 기본’은 기본 기능 연결, ‘확장’은 추가 처리 기능입니다.\r\n형식 선택과 CRC / SHA는 하위 메뉴 단위로 이동합니다. 설정 항목은 맨 아래에 표시합니다.\r\n적용 후 우클릭 메뉴를 다시 열면 반영됩니다. 설정은 시작 메뉴에서도 열 수 있습니다.", AutoSize = true, Margin = new Padding(0, 10, 0, 6) });
-            scroll.Controls.Add(layout); Controls.Add(scroll); Controls.Add(footer);
+            var help = new Label { Text = "항목을 선택하고 위로·아래로 이동하면 실제 메뉴에도 같은 순서로 적용됩니다.\r\n체크를 꺼도 위치는 유지하며, 선택한 파일·폴더에 맞는 명령만 표시합니다.\r\n‘7-Zip 기본’은 기본 기능 연결, ‘확장’은 추가 처리 기능입니다.\r\n형식 선택과 CRC / SHA는 하위 메뉴 단위로 이동합니다. 설정 항목은 맨 아래에 표시합니다.\r\n적용 후 우클릭 메뉴를 다시 열면 반영됩니다. 설정은 시작 메뉴에서도 열 수 있습니다.", AutoSize = true, Margin = new Padding(0, 10, 0, 6) };
+            layout.Controls.Add(help);
+            layout.SizeChanged += delegate { help.MaximumSize = new Size(Math.Max(100, layout.ClientSize.Width - 24), 0); };
+            scroll.Controls.Add(layout);
+            var menuTab = new TabPage("메뉴 설정") { Padding = new Padding(8) }; menuTab.Controls.Add(scroll);
+            var appearanceTab = new TabPage("화면") { Padding = new Padding(12), AutoScroll = true };
+            var appearance = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            appearance.Controls.Add(new Label { Text = "옵션 페이지 글자 크기 (9~18 pt)", AutoSize = true });
+            FontSize.Value = savedFontSize; appearance.Controls.Add(FontSize);
+            appearance.Controls.Add(new Label { Text = "크기를 바꾸면 이 창에서 바로 미리 볼 수 있습니다.\r\n적용·확인을 누르면 저장하고, 취소하면 마지막 저장값을 유지합니다.", AutoSize = true });
+            appearanceTab.Controls.Add(appearance);
+            Tabs.TabPages.AddRange(new[] { menuTab, appearanceTab }); Controls.Add(Tabs); Controls.Add(footer);
+            FontSize.ValueChanged += delegate {
+                Font oldFont = Font; Font = new Font("맑은 고딕", (float)FontSize.Value); oldFont.Dispose();
+                ResizeCommandList(); UpdateDirty();
+            };
+            FontChanged += delegate {
+                float scale = Font.Size / 9F;
+                orderPanel.MinimumSize = new Size(0, (int)(340 * scale));
+                orderGroup.MinimumSize = new Size(0, (int)(380 * scale));
+                orderGroup.Height = orderGroup.MinimumSize.Height;
+            };
+            orderPanel.MinimumSize = new Size(0, (int)(340 * Font.Size / 9F));
+            orderGroup.MinimumSize = new Size(0, (int)(380 * Font.Size / 9F)); orderGroup.Height = orderGroup.MinimumSize.Height;
             saved = OptionsStore.Read(); savedOrder = OptionsStore.ReadOrder(); LoadControls(saved); LoadOrder(savedOrder);
             CommandList.ItemCheck += delegate(object sender, ItemCheckEventArgs e) {
                 if (loading) return;
@@ -170,10 +226,7 @@ namespace SevenZipContextMenu
                 UpdateDirty();
             };
             CommandList.SelectedIndexChanged += delegate { UpdateMoveButtons(); };
-            CommandList.SizeChanged += delegate {
-                CommandList.Columns[1].Width = TextRenderer.MeasureText("7-Zip 기본", Font).Width + 24;
-                CommandList.Columns[0].Width = Math.Max(250, CommandList.ClientSize.Width - CommandList.Columns[1].Width - 24);
-            };
+            CommandList.SizeChanged += delegate { ResizeCommandList(); };
             MoveUp.Click += delegate { MoveSelected(-1); };
             MoveDown.Click += delegate { MoveSelected(1); };
             ResetOrder.Click += delegate { LoadOrder(OptionsStore.DefaultOrder); };
@@ -183,9 +236,14 @@ namespace SevenZipContextMenu
             ShowSettings.CheckedChanged += delegate { UpdateDirty(); };
             Apply.Click += delegate { TrySave(); };
             Ok.Click += delegate { if (TrySave()) { DialogResult = DialogResult.OK; Close(); } };
-            Reset.Click += delegate { LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder); };
+            Reset.Click += delegate { LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder); FontSize.Value = OptionsStore.DefaultFontSize; };
             AcceptButton = Ok; CancelButton = Cancel;
             UpdateMoveButtons();
+        }
+        private void ResizeCommandList()
+        {
+            CommandList.Columns[1].Width = TextRenderer.MeasureText("7-Zip 기본", Font).Width + 24;
+            CommandList.Columns[0].Width = Math.Max(250, CommandList.ClientSize.Width - CommandList.Columns[1].Width - 24);
         }
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
@@ -254,7 +312,7 @@ namespace SevenZipContextMenu
             ShowSettings.Checked = (value & OptionsStore.HideSettings) == 0;
             loading = false; UpdateDirty();
         }
-        private void UpdateDirty() { if (!loading) Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder); }
+        private void UpdateDirty() { if (!loading) Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || FontSize.Value != savedFontSize; }
         private bool TrySave()
         {
             try { Save(); Apply.Enabled = false; return true; }
@@ -264,8 +322,9 @@ namespace SevenZipContextMenu
             }
         }
         internal uint Save() {
-            uint value = ReadControls(); uint[] order = ReadOrder(); OptionsStore.Write(value, order);
-            saved = value; savedOrder = order; return value;
+            uint value = ReadControls(); uint[] order = ReadOrder(); int fontSize = (int)FontSize.Value;
+            OptionsStore.Write(value, order, fontSize);
+            saved = value; savedOrder = order; savedFontSize = fontSize; return value;
         }
     }
 }
