@@ -85,6 +85,13 @@ try {
     Check (-not $status.CanRegister -and -not $status.CanUnregister -and -not $status.CanOptions) 'Mismatched DLL ownership disables unavailable actions'
     Set-TestValue "Registry32\Classes\CLSID\$classId\InprocServer32" '' (Join-Path $package 'x86\SevenZipContextMenu.dll')
     Invoke-Menu $package Unregister
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $shortcut))
+    $foreignShortcut = $shell.CreateShortcut($shortcut)
+    $foreignShortcut.TargetPath = Join-Path $package 'SevenZipContextWorker.exe'; $foreignShortcut.Description = 'Foreign shortcut'; $foreignShortcut.Save()
+    $status = Invoke-Menu $package Status
+    Check (-not $status.CanRegister -and -not $status.CanUnregister) 'Foreign shortcut disables unavailable registration actions'
+    Invoke-Menu $package Register -ExpectFailure
+    [IO.File]::Delete($shortcut)
     $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     $uiTest=Join-Path $caseRoot 'portable_ui_tests.exe'
     & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')

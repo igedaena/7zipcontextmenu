@@ -164,6 +164,8 @@ internal static class OptionsTests
                 form.Reset.PerformClick(); form.Save();
                 Check(OptionsStore.ReadFontSize() == 9, "Reset restores the default font through save");
             }
+            string settingsTool = Path.Combine(root, "settings-tool", "Bandizip.exe");
+            Directory.CreateDirectory(Path.GetDirectoryName(settingsTool)); File.Copy(Application.ExecutablePath, settingsTool);
             using (var form = new SettingsWindow()) {
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
                 Check(!form.UseBandizip.Checked && !form.BandizipAlz.Enabled && !form.BandizipEgg.Enabled, "Existing settings default to optional external integration disabled");
@@ -171,7 +173,7 @@ internal static class OptionsTests
                 bool rejected = false;
                 try { form.Save(); } catch (FileNotFoundException) { rejected = true; }
                 Check(rejected && BandizipOptions.Read().ActiveFormats == 0, "An invalid external executable cannot save enabled integration");
-                form.BandizipPath.Text = BandizipOptions.FindInstalled(); form.Save();
+                form.BandizipPath.Text = settingsTool; form.Save();
                 Check(BandizipOptions.Read().ActiveFormats == 3 && form.BandizipAlz.Enabled && form.BandizipEgg.Enabled, "ALZ and EGG integration saves through the existing settings window");
                 form.BandizipEgg.Checked = false; form.Cancel.PerformClick();
             }
@@ -186,7 +188,7 @@ internal static class OptionsTests
                 Check(BandizipOptions.Read().ActiveFormats == 0, "Default reset disables external integration");
             }
             using (var form = new SettingsWindow()) {
-                form.UseBandizip.Checked = true; form.BandizipPath.Text = BandizipOptions.FindInstalled(); form.BandizipEgg.Checked = false; form.Save();
+                form.UseBandizip.Checked = true; form.BandizipPath.Text = settingsTool; form.BandizipEgg.Checked = false; form.Save();
                 form.UseBandizip.Checked = false; form.Save();
             }
             using (var form = new SettingsWindow()) {

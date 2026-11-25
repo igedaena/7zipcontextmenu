@@ -105,7 +105,7 @@ try {
         foreach ($flags in @(0,1,2,3)) {
             $key.SetValue('BandizipEnabledV1',1,[Microsoft.Win32.RegistryValueKind]::DWord)
             $key.SetValue('BandizipFormatsV1',$flags,[Microsoft.Win32.RegistryValueKind]::DWord)
-            foreach ($fixture in @(@{Name='bundle.alz';Bit=1},@{Name='bundle.a00';Bit=1},@{Name='bundle.egg';Bit=2},@{Name='bundle.vol2.egg';Bit=2},@{Name='standalone.vol2.egg';Bit=2})) {
+            foreach ($fixture in @(@{Name='bundle.alz';Bit=1},@{Name='bundle.a00';Bit=0},@{Name='bundle.egg';Bit=2},@{Name='bundle.vol2.egg';Bit=2},@{Name='standalone.vol2.egg';Bit=2})) {
                 $fixturePath = Join-Path $testRoot $fixture.Name; [IO.File]::WriteAllText($fixturePath,'menu fixture')
                 if ($fixture.Name -eq 'bundle.vol2.egg') {
                     $writer = [IO.BinaryWriter]::new([IO.File]::Create($fixturePath))

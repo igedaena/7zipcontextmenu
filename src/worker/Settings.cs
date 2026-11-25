@@ -58,8 +58,7 @@ namespace SevenZipContextMenu
         }
         internal static bool Supports(string path, int formats)
         {
-            return ((formats & 1) != 0 && (path.EndsWith(".alz", StringComparison.OrdinalIgnoreCase) ||
-                System.Text.RegularExpressions.Regex.IsMatch(path, @"\.a\d{2}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))) ||
+            return ((formats & 1) != 0 && path.EndsWith(".alz", StringComparison.OrdinalIgnoreCase)) ||
                 ((formats & 2) != 0 && path.EndsWith(".egg", StringComparison.OrdinalIgnoreCase));
         }
         internal static BandizipOptions Read()
@@ -236,7 +235,7 @@ namespace SevenZipContextMenu
         internal readonly NumericUpDown FontSize = new NumericUpDown { Minimum = 9, Maximum = 18, Value = 9, Width = 90 };
         internal readonly TabControl Tabs = new TabControl { Dock = DockStyle.Fill };
         internal readonly CheckBox UseBandizip = new CheckBox { Text = "7-Zip 미지원 형식을 반디집으로 풀기", AutoSize = true };
-        internal readonly CheckBox BandizipAlz = new CheckBox { Text = "ALZ (.alz, .a00~.a99 분할 파일)", AutoSize = true };
+        internal readonly CheckBox BandizipAlz = new CheckBox { Text = "ALZ (.alz · 분할 압축의 첫 파일)", AutoSize = true };
         internal readonly CheckBox BandizipEgg = new CheckBox { Text = "EGG (.egg, .vol1.egg 등의 분할 파일)", AutoSize = true };
         internal readonly TextBox BandizipPath = new TextBox { Dock = DockStyle.Fill };
         private BandizipOptions savedBandizip;
@@ -310,7 +309,7 @@ namespace SevenZipContextMenu
             integration.Controls.Add(BandizipPath); integration.Controls.Add(pathButtons);
             integration.Controls.Add(BandizipAlz); integration.Controls.Add(BandizipEgg);
             var integrationHelp = new Label { AutoSize = true, Margin = new Padding(0, 14, 0, 0),
-                Text = "선택한 형식의 ‘알아서 풀기’와 ‘파일명 폴더에 풀기’를 반디집으로 처리합니다.\r\n분할 파일은 첫 볼륨으로 모아 한 번만 풉니다.\r\nZIP·7z·RAR 등 기존 형식은 7-Zip을 사용합니다.\r\n반디집이 설치되어 있어야 하며 암호·진행률은 반디집 창에서 처리합니다." };
+                Text = "선택한 형식의 ‘알아서 풀기’와 ‘파일명 폴더에 풀기’를 반디집으로 처리합니다.\r\n분할 ALZ는 .alz를 선택하세요. EGG는 연결된 볼륨을 한 번만 풉니다.\r\nZIP·7z·RAR 등 기존 형식은 7-Zip을 사용합니다.\r\n반디집이 설치되어 있어야 하며 암호·진행률은 반디집 창에서 처리합니다." };
             integration.Controls.Add(integrationHelp);
             integration.SizeChanged += delegate { integrationHelp.MaximumSize = new Size(Math.Max(100, integration.ClientSize.Width - 12), 0); };
             bandizipTab.Controls.Add(integration);

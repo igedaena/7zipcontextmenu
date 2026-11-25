@@ -77,8 +77,9 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
     const auto marker = lower.ends_with(L".rar") ? L".part" : L".vol";
     const auto part = lower.rfind(marker);
     const auto digits = part == std::wstring::npos ? part : part + std::wcslen(marker);
-    if ((lower.ends_with(L".rar") || (lower.ends_with(L".egg") && IsSplitEggFile(path))) && part != std::wstring::npos && digits < lower.size() - 4 &&
-        std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
+    if (part != std::wstring::npos && digits < lower.size() - 4 &&
+        std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; }) &&
+        (lower.ends_with(L".rar") || (lower.ends_with(L".egg") && IsSplitEggFile(path)))) {
         name.resize(part);
     } else {
         if (lower.size() > 4 && lower[lower.size() - 4] == L'.' &&
@@ -159,9 +160,7 @@ static bool IsBandizipArchive(const std::wstring& path, DWORD formats)
 {
     std::wstring lower(path);
     std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    const auto length = lower.size();
-    return ((formats & 1) && (lower.ends_with(L".alz") || (length >= 4 && lower[length - 4] == L'.' &&
-        lower[length - 3] == L'a' && lower[length - 2] >= L'0' && lower[length - 2] <= L'9' && lower[length - 1] >= L'0' && lower[length - 1] <= L'9'))) ||
+    return ((formats & 1) && lower.ends_with(L".alz")) ||
         ((formats & 2) && lower.ends_with(L".egg"));
 }
 

@@ -191,14 +191,8 @@ namespace SevenZipContextMenu
         private static string FirstVolume(string input)
         {
             string filename = Path.GetFileName(input);
-            Match alz = Regex.Match(filename, @"^(.*)\.a\d{2}$", RegexOptions.IgnoreCase);
             Match egg = Regex.Match(filename, @"^(.*\.vol)(\d+)(\.egg)$", RegexOptions.IgnoreCase);
             if (egg.Success) return FirstEggVolume(input, egg);
-            if (alz.Success) {
-                string first = Path.Combine(Path.GetDirectoryName(input), alz.Groups[1].Value + ".alz");
-                if (!File.Exists(first)) throw new FileNotFoundException("분할 압축의 첫 볼륨을 찾을 수 없습니다.", first);
-                return first;
-            }
             Match rar = Regex.Match(filename, @"^(.*\.part)(\d+)(\.rar)$", RegexOptions.IgnoreCase);
             if (rar.Success)
             {
@@ -225,8 +219,9 @@ namespace SevenZipContextMenu
                 throw new InvalidDataException("EGG 분할 볼륨 번호를 확인할 수 없습니다.");
             string first = null;
             uint lastId = 0, lastNext = 0;
+            int padding = match.Groups[2].Value[0] == '0' ? match.Groups[2].Length : 0;
             for (int i = 1; i <= number; i++) {
-                string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(match.Groups[2].Length, '0') + match.Groups[3].Value;
+                string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(padding, '0') + match.Groups[3].Value;
                 string volume = Path.Combine(Path.GetDirectoryName(input), name);
                 if (!File.Exists(volume)) throw new FileNotFoundException("분할 압축 볼륨을 찾을 수 없습니다.", volume);
                 if (!BandizipOptions.TryReadEggVolume(volume, out id, out previous, out next) ||

@@ -91,6 +91,16 @@ function Get-OwnershipError($State) {
     }
     return $null
 }
+function Get-ShortcutError([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try {
+        $shortcutShell = New-Object -ComObject WScript.Shell
+        if ($shortcutShell.CreateShortcut($Path).Description -ne $owner) {
+            return '같은 이름의 다른 설정 바로 가기가 있습니다. 기존 바로 가기를 먼저 확인해 주세요.'
+        }
+    } catch { return '기존 설정 바로 가기의 소유권을 확인할 수 없습니다.' }
+    return $null
+}
 function Check-Machine($State) {
     foreach ($path in @($State.MachineClassPath,$State.UninstallPath)) {
         $key = $State.Machine.OpenSubKey($path)
@@ -145,9 +155,12 @@ try {
         }
         $handles += [pscustomobject]@{View=$view;User=$user;Machine=$machine;ClassPath=$userBase+'\CLSID\'+$classId;MachineClassPath=$machineBase+'\CLSID\'+$classId;UninstallPath=$uninstall;Handlers=@(($userBase+'\*\shellex\ContextMenuHandlers\'+$className),($userBase+'\Directory\shellex\ContextMenuHandlers\'+$className));Architecture=$(if ($view -eq [Microsoft.Win32.RegistryView]::Registry64) {'x64'} else {'x86'})}
     }
+    $shortcutDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) '7-Zip 확장 (포터블)'
+    if ($TestRegistryRoot) { $shortcutDirectory=Join-Path ([IO.Path]::GetTempPath()) ('SevenZipPortableTest-'+($TestRegistryRoot.Split('\')[-1])) }
+    $shortcut=Join-Path $shortcutDirectory '7-Zip 확장 설정.lnk'
     if ($Action -eq 'Status') {
         if ($AsJson) {
-            $registered = 0; $owned = 0; $conflict = $false; $ownershipError = $null
+            $registered = 0; $owned = 0; $conflict = $false; $ownershipError = Get-ShortcutError $shortcut
             foreach ($state in $handles) {
                 $errorText = Get-OwnershipError $state
                 if ($errorText) { $ownershipError = $errorText }
@@ -206,14 +219,11 @@ try {
         if ($ownershipError) { throw $ownershipError }
         foreach ($path in @($state.ClassPath)+$state.Handlers) { $snapshots += [pscustomobject]@{Hive=$state.User;Path=$path;Tree=(Read-Tree $state.User $path)} }
     }
-    $shortcutDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) '7-Zip 확장 (포터블)'
-    if ($TestRegistryRoot) { $shortcutDirectory=Join-Path ([IO.Path]::GetTempPath()) ('SevenZipPortableTest-'+($TestRegistryRoot.Split('\')[-1])) }
-    $shortcut=Join-Path $shortcutDirectory '7-Zip 확장 설정.lnk'
     $shortcutExisted=Test-Path -LiteralPath $shortcut
     $shell=New-Object -ComObject WScript.Shell
+    $shortcutError = Get-ShortcutError $shortcut
+    if ($shortcutError) { throw $shortcutError }
     if ($shortcutExisted) {
-        $existingShortcut=$shell.CreateShortcut($shortcut)
-        if ($existingShortcut.Description -ne $owner) { throw '같은 이름의 다른 설정 바로 가기가 있어 변경하지 않습니다.' }
         $shortcutBytes=[IO.File]::ReadAllBytes($shortcut)
     }
     if (-not $PSCmdlet.ShouldProcess($appRoot,"$Action current-user portable context menu")) { return }

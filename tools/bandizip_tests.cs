@@ -117,10 +117,15 @@ internal static class BandizipTests
                 try { Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { mismatch } }); }
                 catch (InvalidDataException) { rejected = true; }
                 Check(rejected, "Unrelated first volumes cannot replace the selected EGG archive");
+                for (int i = 1; i <= 10; i++) Fixture(Path.Combine(root, "ten.vol" + i + ".egg"), true, content, (uint)i, (uint)(i - 1), i == 10 ? 0U : (uint)(i + 1));
+                normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { Path.Combine(root, "ten.vol10.egg") } });
+                Check(normalized.Single() == Path.Combine(root, "ten.vol1.egg"), "Two-digit EGG volumes preserve unpadded numbering");
                 string alz = Path.Combine(root, "split.alz"); Fixture(alz, false, content);
                 string a00 = Path.Combine(root, "split.a00"); File.WriteAllText(a00, "volume placeholder");
-                normalized = Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { alz, a00 } });
-                Check(normalized.Length == 1 && normalized[0] == alz, "ALZ volumes normalize to the ALZ first volume");
+                rejected = false;
+                try { Engine.NormalizeInputs(new Request { Operation = Operation.SmartExtract, Paths = new[] { a00 } }); }
+                catch (InvalidDataException) { rejected = true; }
+                Check(rejected, "A raw ALZ continuation name cannot redirect selection to another archive");
                 using (var cancel = new CancellationTokenSource()) {
                     cancel.Cancel(); var result = new Engine(cancel.Token, null, delegate { }).Run(new Request { Operation = Operation.SmartExtract, Paths = new[] { alz } });
                     Check(result.Cancelled && !result.HasErrors, "Cancellation does not start the external program or request an error dialog");
