@@ -127,7 +127,7 @@ try {
         $job=Get-Content -LiteralPath $report -Raw -Encoding UTF8 | ConvertFrom-Json
         Check ($process.ExitCode -eq 0 -and $job.Items[0].Success -and (Test-Path -LiteralPath $job.Items[0].Output)) 'Extracted portable worker creates ZIP after relocation'
     } finally {if(Test-Path -LiteralPath $request){[IO.File]::Delete($request)}}
-    [pscustomobject]@{Success=$true;Passed=$checks.Count;Checks=$checks;TestRoot=$caseRoot;Isolation='HKCU PortableTests only; no real Classes or Start menu changes';PublicInstallationChanged=$false} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\portable-test-results.json') -Encoding UTF8
+    [pscustomobject]@{Success=$true;Passed=$checks.Count;Checks=$checks;TestRoot=$caseRoot;Isolation='HKCU PortableTests for registration; FontSizeV1 backed up and restored; no real Classes or Start menu changes';PublicInstallationChanged=$false} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $projectRoot '.tools\portable-test-results.json') -Encoding UTF8
 } finally {
     $hive.DeleteSubKeyTree($testBase,$false);$hive.Dispose()
     $shortcut=Join-Path ([IO.Path]::GetTempPath()) ('SevenZipPortableTest-'+$testId+'\7-Zip 확장 설정.lnk')

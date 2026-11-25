@@ -371,9 +371,11 @@ namespace SevenZipContextMenu
             AcceptButton = Ok; CancelButton = Cancel;
             Activated += delegate {
                 int points = AppearanceStore.ReadFontSize();
-                if (FontSize.Value == savedFontSize && points != savedFontSize) {
-                    savedFontSize = points; FontSize.Value = points;
-                }
+                if (points == savedFontSize) return;
+                bool editingFont = FontSize.Value != savedFontSize;
+                savedFontSize = points;
+                if (!editingFont) FontSize.Value = points;
+                UpdateDirty();
             };
             UpdateMoveButtons();
         }

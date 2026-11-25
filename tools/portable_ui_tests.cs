@@ -50,6 +50,17 @@ internal static class PortableUiTests
                         Check(form.Busy && !form.Register.Enabled && !form.Unregister.Enabled && !form.Options.Enabled && !form.FontSize.Enabled, "Registration disables concurrent button actions");
                         Wait(form);
                         Check(!form.Register.Enabled && form.Unregister.Enabled && form.Options.Enabled && form.FontSize.Enabled, "Successful registration enables unregister, settings and font: " + form.Status.Text);
+                        string script = Path.Combine(args[0], "scripts", "Portable-Menu.ps1");
+                        string heldScript = script + ".held-" + Guid.NewGuid().ToString("N");
+                        File.Move(script, heldScript);
+                        try {
+                            var refresh = form.RefreshStatus(); Wait(form); refresh.GetAwaiter().GetResult();
+                            string detail = (string)typeof(PortableWindow).GetField("statusDetails", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(form);
+                            Check(!form.Register.Enabled && !form.Unregister.Enabled && !form.Options.Enabled && !form.FontSize.Enabled && detail.Contains("확인할 수 없습니다"),
+                                "A failed status query disables actions and invalidates the previous help state");
+                        } finally { File.Move(heldScript, script); }
+                        var restored = form.RefreshStatus(); Wait(form); restored.GetAwaiter().GetResult();
+                        Check(form.Options.Enabled && form.FontSize.Enabled, "Restoring the status source recovers settings and font controls");
                         using (var bitmap = new Bitmap(form.Width, form.Height)) {
                             form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height)); bitmap.Save(Path.Combine(args[2], "portable-registered.png"));
                         }

@@ -142,6 +142,12 @@ namespace SevenZipContextMenu
         {
             Register.Enabled = false; Unregister.Enabled = false; Options.Enabled = false; FontSize.Enabled = false;
         }
+        private void StatusUnavailable(Exception error)
+        {
+            DisableActions(); lastError = error.Message;
+            statusDetails = "현재 등록 상태를 확인할 수 없습니다.";
+            Status.Text = "등록 상태를 확인하지 못했습니다. ? 도움말을 확인하세요.";
+        }
         private async Task<string> RunScript(string action)
         {
             RuntimeSafety.EnsureStandardUser();
@@ -183,19 +189,21 @@ namespace SevenZipContextMenu
         {
             if (Busy) return;
             Busy = true; DisableActions(); Status.Text = "메뉴 등록 상태를 확인하고 있습니다…";
+            statusDetails = Status.Text;
             try { await ReadStatus(); }
-            catch (Exception error) { DisableActions(); lastError = error.Message; Status.Text = "등록 상태를 확인하지 못했습니다. ? 도움말을 확인하세요."; }
+            catch (Exception error) { StatusUnavailable(error); }
             finally { Busy = false; }
         }
         private async Task ChangeRegistration(string action)
         {
             if (Busy) return;
             Busy = true; lastError = null; DisableActions(); Status.Text = action == "Register" ? "메뉴를 등록하고 있습니다…" : "메뉴를 해제하고 있습니다…";
+            statusDetails = Status.Text;
             string failure = null;
             try { await RunScript(action); }
             catch (Exception error) { failure = error.Message; }
             try { await ReadStatus(); }
-            catch (Exception error) { DisableActions(); lastError = error.Message; Status.Text = "등록 상태를 확인하지 못했습니다. ? 도움말을 확인하세요."; }
+            catch (Exception error) { StatusUnavailable(error); }
             Busy = false;
             if (failure != null) ShowError(failure);
         }

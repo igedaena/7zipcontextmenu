@@ -170,10 +170,20 @@ internal static class OptionsTests
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
                 uint savedOptions = OptionsStore.Read(); form.Icons.Checked = !form.Icons.Checked;
                 form.Hide(); AppearanceStore.WriteFontSize(11); form.Show(); form.Activate(); Application.DoEvents();
+                SendMessage(form.Handle, 0x0006, IntPtr.Zero, IntPtr.Zero);
                 SendMessage(form.Handle, 0x0006, new IntPtr(1), IntPtr.Zero); Application.DoEvents();
                 Check(form.FontSize.Value == 11 && form.Font.Size == 11 && form.Apply.Enabled && OptionsStore.Read() == savedOptions,
-                    "Returning to settings picks up external font changes and preserves unsaved menu edits");
+                    "Returning to settings picks up external font changes and preserves unsaved menu edits, font=" + form.FontSize.Value + ", stored=" + AppearanceStore.ReadFontSize() + ", dirty=" + form.Apply.Enabled);
+                form.Icons.Checked = (savedOptions & OptionsStore.Icons) != 0;
+                form.FontSize.Value = 14; form.Hide(); AppearanceStore.WriteFontSize(12); form.Show();
+                SendMessage(form.Handle, 0x0006, IntPtr.Zero, IntPtr.Zero);
+                SendMessage(form.Handle, 0x0006, new IntPtr(1), IntPtr.Zero); Application.DoEvents();
+                Check(form.FontSize.Value == 14 && form.Font.Size == 14 && AppearanceStore.ReadFontSize() == 12,
+                    "External font updates preserve an explicit unsaved font edit");
+                form.FontSize.Value = 11;
+                Check(form.Apply.Enabled && AppearanceStore.ReadFontSize() == 12, "Dirty font comparison uses the latest externally saved baseline");
                 form.Cancel.PerformClick();
+                Check(AppearanceStore.ReadFontSize() == 12, "Cancelling local edits keeps the latest external font setting");
             }
             AppearanceStore.WriteFontSize(9);
             string settingsTool = Path.Combine(root, "settings-tool", "Bandizip.exe");
