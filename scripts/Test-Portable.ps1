@@ -71,6 +71,13 @@ try {
     Check (Test-Path -LiteralPath (Join-Path $moved 'SevenZipContextWorker.exe')) 'Unregister preserves program files'
     Invoke-Menu $moved Unregister
     Check $true 'Repeated unregister'
+    $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    $uiTest=Join-Path $caseRoot 'portable_ui_tests.exe'
+    & $compiler /nologo /target:exe /main:PortableUiTests /warnaserror+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Runtime.Serialization.dll /r:System.Core.dll /r:System.Xml.dll ("/out:"+$uiTest) (Join-Path $projectRoot 'tools\portable_ui_tests.cs') (Join-Path $projectRoot 'src\portable\PortableWindow.cs') (Join-Path $projectRoot 'src\worker\RuntimeSafety.cs')
+    if($LASTEXITCODE -ne 0){throw 'Portable UI test compilation failed'}
+    & $uiTest $moved $testBase $caseRoot
+    if($LASTEXITCODE -ne 0){throw 'Portable UI state transitions failed'}
+    Check $true 'Portable window registration and button transitions'
     Set-TestValue "Machine\Registry64\Classes\CLSID\$classId" '' 'Installed public version'
     Invoke-Menu $package Register -ExpectFailure
     Check ($null -eq (Read-Value "Registry64\Classes\CLSID\$classId")) 'Public conflict changes no user class'

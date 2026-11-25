@@ -16,9 +16,11 @@
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Register','Unregister','Status')][string]$Action,
     [Parameter(DontShow=$true)][string]$TestRegistryRoot,
+    [switch]$AsJson,
     [Parameter(DontShow=$true)][switch]$TestFailAfterFirstView
 )
 $ErrorActionPreference = 'Stop'
+if ($AsJson) { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) }
 $appRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $classId = '{A5CF4977-65A2-4C35-B147-EB2239F4B720}'
 $className = 'SevenZipContextMenu'
@@ -123,6 +125,40 @@ try {
         $handles += [pscustomobject]@{View=$view;User=$user;Machine=$machine;ClassPath=$userBase+'\CLSID\'+$classId;MachineClassPath=$machineBase+'\CLSID\'+$classId;UninstallPath=$uninstall;Handlers=@(($userBase+'\*\shellex\ContextMenuHandlers\'+$className),($userBase+'\Directory\shellex\ContextMenuHandlers\'+$className));Architecture=$(if ($view -eq [Microsoft.Win32.RegistryView]::Registry64) {'x64'} else {'x86'})}
     }
     if ($Action -eq 'Status') {
+        if ($AsJson) {
+            $registered = 0; $owned = 0; $conflict = $false
+            foreach ($state in $handles) {
+                $root = Value-At $state.User $state.ClassPath 'PortableRoot'
+                $class = Value-At $state.User $state.ClassPath
+                $portable = (Value-At $state.User $state.ClassPath 'PortableOwner') -eq $owner -and $class -eq $className -and $root
+                if ($portable) { $owned++ }
+                elseif ($null -ne (Read-Tree $state.User $state.ClassPath)) { $conflict = $true }
+                $complete = $portable -and [string]::Equals($root,$appRoot,[StringComparison]::OrdinalIgnoreCase) -and
+                    [string]::Equals((Value-At $state.User ($state.ClassPath+'\InprocServer32')),(Join-Path $appRoot ($state.Architecture+'\SevenZipContextMenu.dll')),[StringComparison]::OrdinalIgnoreCase)
+                foreach ($path in $state.Handlers) {
+                    $handler = Read-Tree $state.User $path
+                    if ($null -ne $handler -and (Value-At $state.User $path) -ne $classId) { $conflict = $true }
+                    if ((Value-At $state.User $path) -ne $classId) { $complete = $false }
+                }
+                if ($complete) { $registered++ }
+                $machineHive = if ($TestRegistryRoot) { $state.User } else { $state.Machine }
+                foreach ($path in @($state.MachineClassPath,$state.UninstallPath)) {
+                    $key = $machineHive.OpenSubKey($path)
+                    if ($key) { $key.Dispose(); $conflict = $true }
+                }
+                if (-not $TestRegistryRoot) {
+                    $key = $state.User.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\'+$appId)
+                    if ($key) { $key.Dispose(); $conflict = $true }
+                }
+            }
+            $complete = $registered -eq $views.Count -and -not $conflict
+            $message = if ($conflict) { '기존 설치형 또는 다른 메뉴 등록이 있습니다. 기존 등록을 해제한 뒤 사용해 주세요.' }
+                elseif ($complete) { '이 폴더의 메뉴가 등록되어 있습니다. 메뉴 해제 또는 옵션을 선택하세요.' }
+                elseif ($owned -gt 0) { '이전 위치 또는 일부 메뉴 등록이 있습니다. 메뉴 등록으로 현재 폴더에 다시 연결하거나 메뉴 해제로 정리하세요.' }
+                else { '메뉴 등록을 누르면 현재 사용자에게 우클릭 메뉴를 등록합니다.' }
+            [pscustomobject]@{CanRegister=(-not $complete -and -not $conflict);CanUnregister=($owned -gt 0 -and -not $conflict);CanOptions=$complete;Message=$message} | ConvertTo-Json -Compress
+            return
+        }
         foreach ($state in $handles) {
             [pscustomobject]@{View=[string]$state.View;Owner=(Value-At $state.User $state.ClassPath 'PortableOwner');Root=(Value-At $state.User $state.ClassPath 'PortableRoot');Dll=(Value-At $state.User ($state.ClassPath+'\InprocServer32'))}
         }

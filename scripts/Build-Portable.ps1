@@ -13,16 +13,16 @@
 # or https://www.gnu.org/licenses/ for the complete license.
 
 [CmdletBinding()]
-param([switch]$Force)
+param([switch]$Force, [ValidatePattern('^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version='0.4.3')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
-$version='0.4.3'
 $stage=Join-Path $projectRoot ('out\portable-'+[Guid]::NewGuid().ToString('N').Substring(0,8)+'\SevenZipExtension-Portable-'+$version)
 foreach($directory in @($stage,(Join-Path $stage 'x64'),(Join-Path $stage 'x86'),(Join-Path $stage 'scripts'))) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\x64\Release\SevenZipContextMenu.dll') -Destination (Join-Path $stage 'x64')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\Win32\Release\SevenZipContextMenu.dll') -Destination (Join-Path $stage 'x86')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\x64\Release\SevenZipContextWorker.exe'),(Join-Path $projectRoot 'build\x64\Release\SevenZipContextWorker.exe.config'),(Join-Path $projectRoot 'assets\sevenzip-extension.ico') -Destination $stage
-foreach($file in @('메뉴 등록.cmd','메뉴 해제.cmd','설정 열기.cmd','사용법.txt')) { Copy-Item -LiteralPath (Join-Path $projectRoot ('portable\'+$file)) -Destination $stage }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'build\x64\Release\SevenZipExtension.exe'),(Join-Path $projectRoot 'build\x64\Release\SevenZipExtension.exe.config') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $projectRoot 'portable\사용법.txt') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $projectRoot 'portable\scripts\Portable-Menu.ps1') -Destination (Join-Path $stage 'scripts')
 foreach($file in @('LICENSE','NOTICE.txt','SOURCE.txt','THIRD_PARTY_NOTICES.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $stage }
 $manifest=@(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object { [pscustomobject]@{Path=$_.FullName.Substring($stage.Length+1);SHA256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash} })
