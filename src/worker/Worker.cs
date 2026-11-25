@@ -81,6 +81,7 @@ namespace SevenZipContextMenu
         [DataMember] public string Input;
         [DataMember] public string Output;
         [DataMember] public bool Success;
+        [DataMember] public bool Cancelled;
         [DataMember] public string Error;
     }
     [DataContract]
@@ -93,6 +94,7 @@ namespace SevenZipContextMenu
         [DataMember] public string Error;
         [DataMember] public List<ItemResult> Items = new List<ItemResult>();
         internal bool Success { get { return !Cancelled && Error == null && Items.All(i => i.Success); } }
+        internal bool HasErrors { get { return Error != null || Items.Any(i => !i.Success && !i.Cancelled); } }
     }
     internal sealed class ProcessResult { internal int ExitCode; internal string Text; }
 
@@ -138,7 +140,7 @@ namespace SevenZipContextMenu
                         else throw new InvalidDataException("이 작업은 7-Zip 창에서 실행해야 합니다.");
                         item.Success = true;
                     }
-                    catch (OperationCanceledException) { result.Cancelled = true; item.Error = "취소됨"; result.Items.Add(item); break; }
+                    catch (OperationCanceledException) { result.Cancelled = true; item.Cancelled = true; item.Error = "취소됨"; result.Items.Add(item); break; }
                     catch (Exception error) { item.Error = error.Message; }
                     result.Items.Add(item);
                 }
@@ -445,6 +447,7 @@ namespace SevenZipContextMenu
         }
         private static void RequireSuccess(ProcessResult process)
         {
+            if (process.ExitCode == 255) throw new OperationCanceledException("7-Zip 작업을 취소했습니다.");
             if (process.ExitCode != 0)
                 throw new IOException("7-Zip 작업이 완료되지 않았습니다 (코드 " + process.ExitCode + ").\r\n" + process.Text);
         }
@@ -505,12 +508,12 @@ namespace SevenZipContextMenu
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
                 JobResult guiResult = new Engine(CancellationToken.None, null, delegate { }, true).Run(request);
                 try { WriteResult(resultFile, guiResult); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-                if (!guiResult.Success) {
-                    string summary = guiResult.Cancelled ? "작업을 취소했습니다. 완료된 항목은 유지됩니다." : "일부 작업을 완료하지 못했습니다.";
+                if (guiResult.HasErrors) {
+                    string summary = guiResult.Cancelled ? "취소 전 일부 작업에서 오류가 발생했습니다. 완료된 항목은 유지됩니다." : "일부 작업을 완료하지 못했습니다.";
                     string details = (guiResult.Error ?? "") + String.Join("\r\n\r\n", guiResult.Items.Select(i =>
                         i.Input + "\r\n" + (i.Success ? "완료: " + i.Output : i.Error)));
                     MessageBox.Show(summary + "\r\n\r\n" + details, "7-Zip 확장 작업 결과",
-                        MessageBoxButtons.OK, guiResult.Cancelled ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 return guiResult.Success ? 0 : guiResult.Cancelled ? 2 : 1;
             }

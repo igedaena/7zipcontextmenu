@@ -189,6 +189,11 @@ internal static class NativeProgressTests
             var cancelMonitor=new DialogMonitor {CancelNative=true};
             var cancelled=Gui(Operation.Compress7z,new[]{input},cancelMonitor);
             Check(cancelMonitor.CancelSent && cancelled.Cancelled && !File.Exists(Path.Combine(root,"payload (2).7z")) && File.Exists(seven.Items[0].Output),"Native Cancel stops publication and preserves completed output");
+            Check(!cancelled.HasErrors, "User cancellation alone does not request a second result dialog");
+            var failedThenCancelled = new JobResult { Cancelled = true };
+            failedThenCancelled.Items.Add(new ItemResult { Input = "failed.zip", Error = "damaged archive" });
+            failedThenCancelled.Items.Add(new ItemResult { Input = "cancelled.zip", Cancelled = true, Error = "취소됨" });
+            Check(failedThenCancelled.HasErrors, "Cancellation keeps earlier archive errors visible");
             Check(!Directory.GetDirectories(root,".7ze-work-*").Any(),"Success and native cancellation clean staging folders");
             File.WriteAllText(Path.Combine(root,"broken.zip"),"broken archive");
             var broken=Gui(Operation.ExtractToFolder,new[]{Path.Combine(root,"broken.zip")},new DialogMonitor());
