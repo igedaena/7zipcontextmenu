@@ -33,6 +33,43 @@ static std::wstring ShortArchiveLabel(const std::wstring& name)
     return name.substr(0, boundaries[head]) + L"..." + name.substr(boundaries[length - tail]);
 }
 
+static std::wstring EscapeArchiveLabel(const std::wstring& name)
+{
+    std::wstring escaped;
+    for (const auto ch : ShortArchiveLabel(name)) { escaped += ch; if (ch == L'&') escaped += ch; }
+    return escaped;
+}
+
+// Match Engine.ArchiveStem, including compressed TARs and normalized split volumes.
+static std::wstring ExtractFolderLabel(const std::wstring& path)
+{
+    auto name = std::filesystem::path(path).filename().wstring();
+    std::wstring lower(name);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    const auto part = lower.rfind(L".part");
+    if (lower.ends_with(L".rar") && part != std::wstring::npos && part + 5 < lower.size() - 4 &&
+        std::all_of(lower.begin() + part + 5, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
+        name.resize(part);
+    } else {
+        if (lower.size() > 4 && lower[lower.size() - 4] == L'.' &&
+            std::all_of(lower.end() - 3, lower.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; }) &&
+            (lower.substr(0, lower.size() - 4).ends_with(L".7z") || lower.substr(0, lower.size() - 4).ends_with(L".zip"))) {
+            name.resize(name.size() - 4);
+            lower.resize(lower.size() - 4);
+        }
+        bool stripped = false;
+        for (const auto* suffix : {L".tar.gz", L".tar.bz2", L".tar.xz", L".tgz", L".tbz2", L".txz"}) {
+            if (lower.ends_with(suffix)) { name.resize(name.size() - std::wcslen(suffix)); stripped = true; break; }
+        }
+        if (!stripped) {
+            const auto dot = name.find_last_of(L'.');
+            if (dot != std::wstring::npos) name.resize(dot);
+        }
+    }
+    if (name.empty()) name = L"archive";
+    return L"\"" + EscapeArchiveLabel(name) + L"\\\" 에 풀기";
+}
+
 // Keep the displayed output name consistent with Engine.QuickArchivePath.
 static std::wstring QuickArchiveName(const std::vector<std::wstring>& paths, const wchar_t* extension)
 {
@@ -52,9 +89,7 @@ static std::wstring QuickArchiveName(const std::vector<std::wstring>& paths, con
     for (int i = 1; i <= 10000; ++i) {
         const auto name = stem + (i == 1 ? L"" : L" (" + std::to_wstring(i) + L")") + extension;
         if (GetFileAttributesW((parent / name).c_str()) != INVALID_FILE_ATTRIBUTES) continue;
-        std::wstring escaped;
-        for (const auto ch : ShortArchiveLabel(name)) { escaped += ch; if (ch == L'&') escaped += ch; }
-        return L"\"" + escaped + L"\" 에 추가";
+        return L"\"" + EscapeArchiveLabel(name) + L"\" 에 추가";
     }
     return {};
 }
@@ -173,6 +208,8 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
         const bool singleFile = paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
         if ((op == Operation::Open || command.group == 1) && !singleFile) continue;
         if (op == Operation::Open && !archivesOnly) continue;
+        if (op == Operation::ExtractToFolder && paths.size() == 1)
+            command.title = ExtractFolderLabel(paths[0]);
         if (op == Operation::QuickZip || op == Operation::Quick7z) {
             command.title = QuickArchiveName(paths, op == Operation::QuickZip ? L".zip" : L".7z");
             if (command.title.empty()) continue;

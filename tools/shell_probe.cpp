@@ -131,6 +131,18 @@ int wmain(int argc, wchar_t** argv)
                     char verb[128]{};
                     Check(SUCCEEDED(context->GetCommandString(item.wID - 100, GCS_VERBA, nullptr, verb, 128)), "Options canonical verb");
                     Check(verbs.insert(verb).second, "Unique canonical verbs");
+                    if (std::string(verb) == "SevenZipExt.ExtractToFolder" && paths.size() == 1) {
+                        wchar_t title[1024]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 1024, MF_BYPOSITION);
+                        const std::wstring label(title);
+                        Check(label.starts_with(L"\"") && label.ends_with(L"\\\" 에 풀기"), "Single archive displays the extraction folder");
+                        const std::vector<std::pair<std::wstring, std::wstring>> cases{
+                            {L"extract-simple", L"sample"}, {L"extract-tar", L"bundle"},
+                            {L"extract-split", L"bundle"}, {L"extract-rar", L"bundle"},
+                            {L"extract-empty", L"archive"}, {L"extract-ampersand", L"한글 && 문서"}};
+                        for (const auto& [scenario, expected] : cases)
+                            if (mode.find(scenario) != std::wstring::npos)
+                                Check(label == L"\"" + expected + L"\\\" 에 풀기", "Extraction label matches the normalized output stem");
+                    }
                     if (std::string(verb) == "SevenZipExt.QuickZip" || std::string(verb) == "SevenZipExt.Quick7z") {
                         const bool zip = std::string(verb) == "SevenZipExt.QuickZip";
                         wchar_t title[1024]{}; GetMenuStringW(current, static_cast<UINT>(n), title, 1024, MF_BYPOSITION);
@@ -229,6 +241,8 @@ int wmain(int argc, wchar_t** argv)
             }
             else if (mode.find(L"filter") != std::wstring::npos) {
                 Check(verbs.size() == 2 && verbs.contains("SevenZipExt.Quick7z"), "One enabled command plus settings");
+            } else if (mode.find(L"-extract-") != std::wstring::npos) {
+                Check(verbs.contains("SevenZipExt.ExtractToFolder") && verbs.contains("SevenZipExt.Open"), "Archive fixture exposes extraction and open commands");
             } else {
                 Check(verbs.contains("SevenZipExt.HashSHA256") && verbs.contains("SevenZipExt.HashTest"), "Hash children");
                 Check(verbs.contains("SevenZipExt.QuickZip") && verbs.contains("SevenZipExt.AddDialog"), "Shared compression entries");

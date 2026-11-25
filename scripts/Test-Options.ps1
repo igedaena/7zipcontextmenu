@@ -78,6 +78,21 @@ try {
                 $count++
             }
         }
+        foreach ($fixture in @(
+            @{Name='sample.zip'; Mode='simple'}, @{Name='bundle.tar.gz'; Mode='tar'},
+            @{Name='bundle.TAR.BZ2'; Mode='tar'}, @{Name='bundle.txz'; Mode='tar'},
+            @{Name='bundle.7z.001'; Mode='split'}, @{Name='bundle.zip.002'; Mode='split'},
+            @{Name='bundle.part001.rar'; Mode='rar'}, @{Name='.zip'; Mode='empty'},
+            @{Name='한글 & 문서.zip'; Mode='ampersand'})) {
+            $fixturePath = Join-Path $testRoot $fixture.Name
+            [IO.File]::WriteAllText($fixturePath,'menu fixture')
+            foreach ($layout in @('direct','cascade')) {
+                $key.SetValue('OptionsV1',$(if ($layout -eq 'direct') {0x31fff} else {0x21fff}),[Microsoft.Win32.RegistryValueKind]::DWord)
+                & $probe $dll ('options-'+$layout+'-icons-extract-'+$fixture.Mode) 0 $fixturePath
+                if ($LASTEXITCODE -ne 0) { throw "Extraction folder label failed: $architecture $($fixture.Name)" }
+                $count++
+            }
+        }
         # Bad settings fall back to defaults in the DLL, not an empty menu.
         $preview = Join-Path $testRoot 'preview.txt'; [IO.File]::WriteAllText($preview,'preview')
         [IO.File]::WriteAllText((Join-Path $testRoot 'preview.zip'),'existing ZIP')
