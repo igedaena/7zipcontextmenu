@@ -52,8 +52,8 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 
 [Files]
-Source: "build\x64\Release\SevenZipContextMenu.dll"; DestDir: "{app}\x64"; Flags: ignoreversion
-Source: "build\Win32\Release\SevenZipContextMenu.dll"; DestDir: "{app}\x86"; Flags: ignoreversion
+Source: "build\x64\Release\SevenZipContextMenu.dll"; DestDir: "{app}\x64"; Flags: ignoreversion uninsrestartdelete
+Source: "build\Win32\Release\SevenZipContextMenu.dll"; DestDir: "{app}\x86"; Flags: ignoreversion uninsrestartdelete
 Source: "build\x64\Release\SevenZipContextWorker.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\x64\Release\SevenZipContextWorker.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\sevenzip-extension.ico"; DestDir: "{app}"; Flags: ignoreversion
