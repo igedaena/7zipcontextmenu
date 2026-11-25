@@ -9,9 +9,11 @@
 | Git 저장소 | `assets/sevenzip-extension.ico`, `assets/sevenzip-extension.png`, `assets/sevenzip-extension-source.png`, `assets/README.md` | 프로그램 아이콘과 재생성 원본 |
 | Git 저장소 | `README.md`, `THIRD_PARTY_NOTICES.md`, `docs/BUILD.md`, `docs/RELEASES.md`, `docs/DISTRIBUTION.md` | 사용자·개발·배포 안내 |
 | Git 저장소 및 설치형·포터블 | `LICENSE`, `NOTICE.txt`, `SOURCE.txt` | GPL-3.0-or-later 전문·고지 및 해당 버전 소스 다운로드 안내 |
-| v0.4.2 릴리스 | `SevenZipExtension-Setup-0.4.2.exe` | 공용 설치형 |
-| v0.4.2 릴리스 | `SevenZipExtension-Portable-0.4.2.zip` | 현재 사용자 등록형 포터블 |
-| v0.4.2 릴리스 | `SHA256SUMS.txt` | 위 두 파일의 무결성 확인 |
+| v0.4.3 릴리스 | `SevenZipExtension-Setup-0.4.3.exe` | 공용 설치형 |
+| v0.4.3 릴리스 | `SevenZipExtension-Portable-0.4.3.zip` | 현재 사용자 등록형 포터블 |
+| v0.4.3 릴리스 | `SHA256SUMS.txt` | 위 두 파일의 무결성 확인 |
+
+2026-11-25 개발 빌드는 `0.4.3-dev3`입니다. 로컬 `dist`에는 같은 이름의 설치형 EXE·포터블 ZIP과 두 파일의 `SHA256SUMS.txt`를 두고, 이전 패키지·검사 기록은 `archive`에 보관합니다. 현재 패키징 폴더는 `out/current`에 둡니다. 개발 패키지의 해시·확인 범위는 [개발 변경 사항](RELEASES.md)을 참고하세요. 개발 소스를 `main`에 푸시해도 정식 릴리스나 태그를 새로 만들지는 않습니다.
 
 ## 업로드하지 않는 항목
 

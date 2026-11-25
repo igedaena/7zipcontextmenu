@@ -43,6 +43,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-NativePro
 
 개발용 ZIP은 `Build-Portable.ps1 -Version 0.4.3-dev`로 별도 이름을 지정할 수 있습니다. 기존 파일을 다시 만들 때는 `-Force`를 함께 사용합니다. 실행 창과 작업 실행기는 같은 폴더에 있는 DLL·scripts와 함께 보관합니다.
 
+2026-11-25 정리본은 `0.4.3-dev3`입니다. 포터블은 `Build-Portable.ps1 -Version 0.4.3-dev3 -Force`로 만들고, 설치형은 ISCC에 `/FSevenZipExtension-Setup-0.4.3-dev3`를 전달해 출력 이름을 지정합니다. `dist`에 두 패키지와 `SHA256SUMS.txt`를 모읍니다. 동봉하는 `SOURCE.txt`에는 실행 파일을 빌드한 소스 커밋을 기록합니다.
+
 반디집 연동 검사는 설치된 `Bandizip.exe`와 `bz.exe`를 사용해 `Test-Bandizip.ps1`로 실행합니다. 검사 코드가 만든 ALZ·EGG만 풀고, 검사가 실행한 반디집 창만 닫거나 취소합니다. 개인 연동 설정은 백업·복원합니다.
 
 한글을 포함하는 Windows PowerShell 5 스크립트의 UTF-8 BOM을 유지합니다. 빌드 통신이 제한되는 환경에서는 일반 PowerShell에서 실행하세요.

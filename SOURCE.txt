@@ -1,29 +1,28 @@
-7-Zip Extension Menu 0.4.3 - Complete Corresponding Source
-License: GPL-3.0-or-later
+﻿7-Zip Extension Menu development build 0.4.3-dev3
+Complete corresponding source
+License GPL-3.0-or-later
 
-Public repository and release:
+This development build uses runtime source commit
+85a09f522a0b6ab7ff3b0dd3649c8f2bc597621b
+
+Repository
 https://github.com/igedaena/7zipcontextmenu
+
+Exact runtime source and source archive
+https://github.com/igedaena/7zipcontextmenu/tree/85a09f522a0b6ab7ff3b0dd3649c8f2bc597621b
+https://github.com/igedaena/7zipcontextmenu/archive/85a09f522a0b6ab7ff3b0dd3649c8f2bc597621b.zip
+
+Build instructions are in docs/BUILD.md in the source archive.
+Native source is in src/shell. Managed source is in src/worker and src/portable.
+Build and packaging files are CMakeLists.txt, .vsconfig, scripts, installer and portable.
+Editable artwork is assets/sevenzip-extension-source.png.
+
+The published stable release is v0.4.3.
 https://github.com/igedaena/7zipcontextmenu/releases/tag/v0.4.3
 
-Source for this version, including LICENSE and the build/install scripts:
-https://github.com/igedaena/7zipcontextmenu/tree/v0.4.3
-https://github.com/igedaena/7zipcontextmenu/archive/refs/tags/v0.4.3.zip
-
-The v0.4.2 tag does not contain these changes. Use the v0.4.3 tag above
-for the complete corresponding source of these release packages.
-
-Build instructions: docs/BUILD.md in the source archive.
-Native source: src/shell; managed source: src/worker.
-Build and packaging: CMakeLists.txt, .vsconfig, scripts, installer, portable.
-Editable artwork: assets/sevenzip-extension-source.png.
-
 Visual Studio Build Tools, Windows SDK, CMake and Inno Setup are external
-general-purpose build tools. Windows/.NET and 7-Zip are separate runtime
-requirements. They are not included in these release packages.
+build tools. Windows/.NET, 7-Zip and optional Bandizip are separate runtime
+requirements. The packages contain this project's runtime and license notices.
 
-Version 0.4.3 adds editable menu ordering and shortens long displayed archive
-names without changing actual output filenames. Interactive extension jobs
-continue to use native 7-Zip progress/password dialogs.
-
-Keep this notice and the license when redistributing; provide corresponding source as required by
-the GPL. See LICENSE for the complete terms.
+Keep this notice and the license when redistributing. Provide corresponding
+source as required by the GPL. See LICENSE for the complete terms.
