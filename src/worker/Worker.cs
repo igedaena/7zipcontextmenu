@@ -228,12 +228,12 @@ namespace SevenZipContextMenu
             // vol10 can belong to either vol1...vol10 or vol01...vol10.
             // Use the actual header chain to choose between both naming patterns.
             foreach (int padding in new[] { 0, match.Groups[2].Length }.Distinct()) {
+                if (number.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(padding, '0') != match.Groups[2].Value) continue;
                 var chain = new List<string>();
                 EggVolumeInfo last = null;
                 for (int i = 1; i <= number; i++) {
                     string name = match.Groups[1].Value + i.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(padding, '0') + match.Groups[3].Value;
                     string volume = Path.Combine(Path.GetDirectoryName(input), name);
-                    if (i == number && !String.Equals(volume, input, StringComparison.OrdinalIgnoreCase)) break;
                     EggVolumeInfo header = ReadEggHeader(volume, headers);
                     if (header == null || (last == null ? header.Previous != 0 : header.Previous != last.Id || header.Id != last.Next)) break;
                     chain.Add(volume); last = header;
@@ -251,8 +251,8 @@ namespace SevenZipContextMenu
             bool extracting = request.Operation == Operation.SmartExtract || request.Operation == Operation.ExtractToFolder ||
                 request.Operation == Operation.ExtractDialog || request.Operation == Operation.ExtractHere || request.Operation == Operation.Test;
             var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var eggHeaders = new Dictionary<string, EggVolumeInfo>(StringComparer.OrdinalIgnoreCase);
-            var firstEggVolumes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var eggHeaders = new Dictionary<string, EggVolumeInfo>(StringComparer.Ordinal);
+            var firstEggVolumes = new Dictionary<string, string>(StringComparer.Ordinal);
             var result = new List<string>();
             foreach (string original in request.Paths)
             {

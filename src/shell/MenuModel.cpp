@@ -81,10 +81,13 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
         std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; });
     if (volumeName && lower.ends_with(L".egg")) {
         const DWORD attributes = GetFileAttributesW(path.c_str());
-        const auto root = std::filesystem::path(path).root_path();
+        const auto ordinaryPath = path.starts_with(L"\\\\?\\") ? path.substr(4) : path;
+        const bool unc = ordinaryPath.starts_with(L"\\\\") || (ordinaryPath.size() >= 4 &&
+            CompareStringOrdinal(ordinaryPath.c_str(), 4, L"UNC\\", 4, TRUE) == CSTR_EQUAL);
+        const auto root = std::filesystem::path(ordinaryPath).root_path();
         if (attributes == INVALID_FILE_ATTRIBUTES ||
             (attributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)) ||
-            path.starts_with(L"\\\\") || GetDriveTypeW(root.c_str()) == DRIVE_REMOTE)
+            unc || GetDriveTypeW(root.c_str()) == DRIVE_REMOTE)
             return L"파일명 폴더에 풀기";
     }
     if (volumeName &&

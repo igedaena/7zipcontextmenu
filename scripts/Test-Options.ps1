@@ -122,6 +122,11 @@ try {
                     & $probe $dll ('options-'+$layout+'-icons-bandizip-'+$state+'-extract-'+$kind) 0 $fixturePath
                     if ($LASTEXITCODE -ne 0) { throw 'Bandizip menu selection failed' }
                     $count++
+                    if ($fixture.Name -eq 'bundle.vol2.egg' -and $state -eq 'on') {
+                        & $probe $dll ('options-'+$layout+'-icons-bandizip-on-extract-bandi') 0 ('\\?\'+$fixturePath)
+                        if ($LASTEXITCODE -ne 0) { throw 'Extended local EGG path preview failed' }
+                        $count++
+                    }
                 }
             }
         }
