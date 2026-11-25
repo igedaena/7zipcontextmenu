@@ -40,20 +40,22 @@ namespace SevenZipContextMenu
                 Arguments = arguments.Where(a => a != "-bsp0" && a != "-sccUTF-8" && a != "-y").ToArray()
             };
         }
-        internal static ProcessResult RunProgress(LaunchPlan plan, CancellationToken cancellation)
+        internal static ProcessResult RunProgress(LaunchPlan plan, CancellationToken cancellation, bool bandizip = false)
         {
             cancellation.ThrowIfCancellationRequested();
             RuntimeSafety.EnsureStandardUser();
-            RuntimeSafety.RequireSupportedSevenZip(plan.Executable);
+            if (bandizip) BandizipOptions.Validate(plan.Executable);
+            else RuntimeSafety.RequireSupportedSevenZip(plan.Executable);
             using (var process = Process.Start(new ProcessStartInfo(plan.Executable,
                 String.Join(" ", plan.Arguments.Select(Engine.QuoteArgument))) {
                     UseShellExecute = false, WorkingDirectory = plan.WorkingDirectory })) {
                 try {
                     while (!process.WaitForExit(100)) cancellation.ThrowIfCancellationRequested();
                     cancellation.ThrowIfCancellationRequested();
-                    if (process.ExitCode == 255) throw new OperationCanceledException("7-Zip 작업을 취소했습니다.");
+                    if (!bandizip && process.ExitCode == 255) throw new OperationCanceledException("7-Zip 작업을 취소했습니다.");
+                    if (bandizip && process.ExitCode == 11) throw new OperationCanceledException("반디집 작업을 취소했습니다.");
                     return new ProcessResult { ExitCode = process.ExitCode,
-                        Text = process.ExitCode == 0 ? "" : "7-Zip 작업이 완료되지 않았습니다 (코드 " + process.ExitCode + ")." };
+                        Text = process.ExitCode == 0 ? "" : (bandizip ? "반디집" : "7-Zip") + " 작업이 완료되지 않았습니다 (코드 " + process.ExitCode + ")." };
                 } finally {
                     if (!process.HasExited) { process.Kill(); process.WaitForExit(); }
                 }

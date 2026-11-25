@@ -23,6 +23,57 @@ using Microsoft.Win32;
 
 namespace SevenZipContextMenu
 {
+    internal sealed class BandizipOptions
+    {
+        internal int Formats;
+        internal string Executable = "";
+        internal static bool Supports(string path, int formats)
+        {
+            return ((formats & 1) != 0 && (path.EndsWith(".alz", StringComparison.OrdinalIgnoreCase) ||
+                System.Text.RegularExpressions.Regex.IsMatch(path, @"\.a\d{2}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))) ||
+                ((formats & 2) != 0 && path.EndsWith(".egg", StringComparison.OrdinalIgnoreCase));
+        }
+        internal static BandizipOptions Read()
+        {
+            var result = new BandizipOptions();
+            try {
+                using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
+                using (var key = hive.OpenSubKey(OptionsStore.KeyPath)) {
+                    if (key == null) return result;
+                    object formats = key.GetValue("BandizipFormatsV1");
+                    result.Formats = formats is int ? (int)formats & 3 : 0;
+                    result.Executable = key.GetValue("BandizipPathV1") as string ?? "";
+                }
+            } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            return result;
+        }
+        internal static string FindInstalled()
+        {
+            var candidates = new List<string>();
+            foreach (RegistryHive source in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+            foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 }) {
+                using (var hive = RegistryKey.OpenBaseKey(source, view))
+                using (var key = hive.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\Bandizip.exe")) {
+                    string value = key == null ? null : key.GetValue(null) as string;
+                    if (!String.IsNullOrWhiteSpace(value)) candidates.Add(value.Trim('"'));
+                }
+            }
+            foreach (string variable in new[] { "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA" }) {
+                string directory = Environment.GetEnvironmentVariable(variable);
+                if (!String.IsNullOrEmpty(directory)) candidates.Add(Path.Combine(directory, "Bandizip", "Bandizip.exe"));
+            }
+            return candidates.FirstOrDefault(File.Exists) ?? "";
+        }
+        internal static void Validate(string executable)
+        {
+            if (String.IsNullOrWhiteSpace(executable) || !Path.IsPathRooted(executable) || !File.Exists(executable) ||
+                !String.Equals(Path.GetFileName(executable), "Bandizip.exe", StringComparison.OrdinalIgnoreCase))
+                throw new FileNotFoundException("설치된 Bandizip.exe를 지정해 주세요.");
+        }
+    }
+
     internal static class OptionsStore
     {
         internal const string KeyPath = @"Software\SevenZipContextMenu";
@@ -43,19 +94,27 @@ namespace SevenZipContextMenu
             catch (UnauthorizedAccessException) { return DefaultFontSize; }
             catch (SecurityException) { return DefaultFontSize; }
         }
-        internal static void Write(uint value, uint[] order, int fontSize)
+        internal static void Write(uint value, uint[] order, int fontSize, BandizipOptions bandizip)
         {
             if (fontSize < 9 || fontSize > 18) throw new ArgumentOutOfRangeException("fontSize");
+            if (bandizip.Formats != 0) BandizipOptions.Validate(bandizip.Executable);
             RuntimeSafety.EnsureStandardUser();
             using (var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64))
             using (var key = hive.CreateSubKey(KeyPath)) {
-                object previous = key.GetValue("FontSizeV1");
-                RegistryValueKind kind = previous == null ? RegistryValueKind.None : key.GetValueKind("FontSizeV1");
-                key.SetValue("FontSizeV1", fontSize, RegistryValueKind.DWord);
-                try { Write(value, order); }
+                string[] names = { "FontSizeV1", "BandizipFormatsV1", "BandizipPathV1" };
+                object[] values = { fontSize, bandizip.Formats, bandizip.Executable };
+                RegistryValueKind[] kinds = { RegistryValueKind.DWord, RegistryValueKind.DWord, RegistryValueKind.String };
+                object[] previous = names.Select(name => key.GetValue(name)).ToArray();
+                var previousKinds = names.Select((name, i) => previous[i] == null ? RegistryValueKind.None : key.GetValueKind(name)).ToArray();
+                try {
+                    for (int i = 0; i < names.Length; i++) key.SetValue(names[i], values[i], kinds[i]);
+                    Write(value, order);
+                }
                 catch {
-                    if (previous == null) key.DeleteValue("FontSizeV1", false);
-                    else key.SetValue("FontSizeV1", previous, kind);
+                    for (int i = 0; i < names.Length; i++) {
+                        if (previous[i] == null) key.DeleteValue(names[i], false);
+                        else key.SetValue(names[i], previous[i], previousKinds[i]);
+                    }
                     throw;
                 }
             }
@@ -146,6 +205,11 @@ namespace SevenZipContextMenu
         internal readonly Button Cancel = new Button { Text = "취소", AutoSize = true, DialogResult = DialogResult.Cancel };
         internal readonly NumericUpDown FontSize = new NumericUpDown { Minimum = 9, Maximum = 18, Value = 9, Width = 90 };
         internal readonly TabControl Tabs = new TabControl { Dock = DockStyle.Fill };
+        internal readonly CheckBox UseBandizip = new CheckBox { Text = "7-Zip 미지원 형식을 반디집으로 풀기", AutoSize = true };
+        internal readonly CheckBox BandizipAlz = new CheckBox { Text = "ALZ (.alz, .a00~.a99 분할 파일)", AutoSize = true };
+        internal readonly CheckBox BandizipEgg = new CheckBox { Text = "EGG (.egg, .vol1.egg 등의 분할 파일)", AutoSize = true };
+        internal readonly TextBox BandizipPath = new TextBox { Dock = DockStyle.Fill };
+        private BandizipOptions savedBandizip;
         private int savedFontSize;
         private uint saved;
         private uint enabledCommands;
@@ -204,7 +268,45 @@ namespace SevenZipContextMenu
             FontSize.Value = savedFontSize; appearance.Controls.Add(FontSize);
             appearance.Controls.Add(new Label { Text = "크기를 바꾸면 이 창에서 바로 미리 볼 수 있습니다.\r\n적용·확인을 누르면 저장하고, 취소하면 마지막 저장값을 유지합니다.", AutoSize = true });
             appearanceTab.Controls.Add(appearance);
-            Tabs.TabPages.AddRange(new[] { menuTab, appearanceTab }); Controls.Add(Tabs); Controls.Add(footer);
+            var bandizipTab = new TabPage("반디집 연동") { Padding = new Padding(12), AutoScroll = true };
+            var integration = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
+            integration.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var pathButtons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
+            var detect = new Button { Text = "자동 찾기", AutoSize = true };
+            var browse = new Button { Text = "찾아보기…", AutoSize = true };
+            pathButtons.Controls.AddRange(new Control[] { detect, browse });
+            integration.Controls.Add(UseBandizip);
+            integration.Controls.Add(new Label { Text = "반디집 실행 파일 (Bandizip.exe)", AutoSize = true, Margin = new Padding(0, 14, 0, 4) });
+            integration.Controls.Add(BandizipPath); integration.Controls.Add(pathButtons);
+            integration.Controls.Add(BandizipAlz); integration.Controls.Add(BandizipEgg);
+            var integrationHelp = new Label { AutoSize = true, Margin = new Padding(0, 14, 0, 0),
+                Text = "선택한 형식의 ‘알아서 풀기’와 ‘파일명 폴더에 풀기’를 반디집으로 처리합니다.\r\n분할 파일은 첫 볼륨으로 모아 한 번만 풉니다.\r\nZIP·7z·RAR 등 기존 형식은 7-Zip을 사용합니다.\r\n반디집이 설치되어 있어야 하며 암호·진행률은 반디집 창에서 처리합니다." };
+            integration.Controls.Add(integrationHelp);
+            integration.SizeChanged += delegate { integrationHelp.MaximumSize = new Size(Math.Max(100, integration.ClientSize.Width - 12), 0); };
+            bandizipTab.Controls.Add(integration);
+            savedBandizip = BandizipOptions.Read();
+            UseBandizip.Checked = savedBandizip.Formats != 0;
+            BandizipAlz.Checked = savedBandizip.Formats == 0 || (savedBandizip.Formats & 1) != 0;
+            BandizipEgg.Checked = savedBandizip.Formats == 0 || (savedBandizip.Formats & 2) != 0;
+            BandizipPath.Text = savedBandizip.Executable;
+            UseBandizip.CheckedChanged += delegate { UpdateBandizipControls(); UpdateDirty(); };
+            BandizipAlz.CheckedChanged += delegate { UpdateDirty(); };
+            BandizipEgg.CheckedChanged += delegate { UpdateDirty(); };
+            BandizipPath.TextChanged += delegate { UpdateDirty(); };
+            detect.Click += delegate {
+                try {
+                    string found = BandizipOptions.FindInstalled();
+                    if (found.Length == 0) MessageBox.Show(this, "설치된 반디집을 찾지 못했습니다. 찾아보기로 실행 파일을 지정해 주세요.", Text);
+                    else BandizipPath.Text = found;
+                } catch (Exception error) { MessageBox.Show(this, error.Message, Text); }
+            };
+            browse.Click += delegate {
+                using (var dialog = new OpenFileDialog { Filter = "반디집 실행 파일|Bandizip.exe", CheckFileExists = true }) {
+                    if (dialog.ShowDialog(this) == DialogResult.OK) BandizipPath.Text = dialog.FileName;
+                }
+            };
+            UpdateBandizipControls();
+            Tabs.TabPages.AddRange(new[] { menuTab, appearanceTab, bandizipTab }); Controls.Add(Tabs); Controls.Add(footer);
             FontSize.ValueChanged += delegate {
                 Font oldFont = Font; Font = new Font("맑은 고딕", (float)FontSize.Value); oldFont.Dispose();
                 ResizeCommandList(); UpdateDirty();
@@ -236,9 +338,21 @@ namespace SevenZipContextMenu
             ShowSettings.CheckedChanged += delegate { UpdateDirty(); };
             Apply.Click += delegate { TrySave(); };
             Ok.Click += delegate { if (TrySave()) { DialogResult = DialogResult.OK; Close(); } };
-            Reset.Click += delegate { LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder); FontSize.Value = OptionsStore.DefaultFontSize; };
+            Reset.Click += delegate {
+                LoadControls(OptionsStore.Defaults); LoadOrder(OptionsStore.DefaultOrder); FontSize.Value = OptionsStore.DefaultFontSize;
+                UseBandizip.Checked = false; BandizipAlz.Checked = true; BandizipEgg.Checked = true; BandizipPath.Text = "";
+            };
             AcceptButton = Ok; CancelButton = Cancel;
             UpdateMoveButtons();
+        }
+        private void UpdateBandizipControls()
+        {
+            BandizipAlz.Enabled = UseBandizip.Checked; BandizipEgg.Enabled = UseBandizip.Checked;
+        }
+        private BandizipOptions ReadBandizipControls()
+        {
+            return new BandizipOptions { Formats = UseBandizip.Checked ? (BandizipAlz.Checked ? 1 : 0) | (BandizipEgg.Checked ? 2 : 0) : 0,
+                Executable = BandizipPath.Text.Trim() };
         }
         private void ResizeCommandList()
         {
@@ -312,7 +426,13 @@ namespace SevenZipContextMenu
             ShowSettings.Checked = (value & OptionsStore.HideSettings) == 0;
             loading = false; UpdateDirty();
         }
-        private void UpdateDirty() { if (!loading) Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || FontSize.Value != savedFontSize; }
+        private void UpdateDirty()
+        {
+            if (loading || savedBandizip == null) return;
+            BandizipOptions bandizip = ReadBandizipControls();
+            Apply.Enabled = ReadControls() != saved || !ReadOrder().SequenceEqual(savedOrder) || FontSize.Value != savedFontSize ||
+                bandizip.Formats != savedBandizip.Formats || bandizip.Executable != savedBandizip.Executable;
+        }
         private bool TrySave()
         {
             try { Save(); Apply.Enabled = false; return true; }
@@ -323,8 +443,10 @@ namespace SevenZipContextMenu
         }
         internal uint Save() {
             uint value = ReadControls(); uint[] order = ReadOrder(); int fontSize = (int)FontSize.Value;
-            OptionsStore.Write(value, order, fontSize);
-            saved = value; savedOrder = order; savedFontSize = fontSize; return value;
+            BandizipOptions bandizip = ReadBandizipControls();
+            if (UseBandizip.Checked && bandizip.Formats == 0) throw new InvalidDataException("반디집으로 처리할 형식을 하나 이상 선택해 주세요.");
+            OptionsStore.Write(value, order, fontSize, bandizip);
+            saved = value; savedOrder = order; savedFontSize = fontSize; savedBandizip = bandizip; return value;
         }
     }
 }

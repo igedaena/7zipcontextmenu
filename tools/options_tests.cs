@@ -164,6 +164,27 @@ internal static class OptionsTests
                 form.Reset.PerformClick(); form.Save();
                 Check(OptionsStore.ReadFontSize() == 9, "Reset restores the default font through save");
             }
+            using (var form = new SettingsWindow()) {
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show(); Application.DoEvents();
+                Check(!form.UseBandizip.Checked && !form.BandizipAlz.Enabled && !form.BandizipEgg.Enabled, "Existing settings default to optional external integration disabled");
+                form.UseBandizip.Checked = true; form.BandizipPath.Text = Path.Combine(root, "missing", "Bandizip.exe");
+                bool rejected = false;
+                try { form.Save(); } catch (FileNotFoundException) { rejected = true; }
+                Check(rejected && BandizipOptions.Read().Formats == 0, "An invalid external executable cannot save enabled integration");
+                form.BandizipPath.Text = BandizipOptions.FindInstalled(); form.Save();
+                Check(BandizipOptions.Read().Formats == 3 && form.BandizipAlz.Enabled && form.BandizipEgg.Enabled, "ALZ and EGG integration saves through the existing settings window");
+                form.BandizipEgg.Checked = false; form.Cancel.PerformClick();
+            }
+            using (var form = new SettingsWindow()) {
+                Check(form.UseBandizip.Checked && form.BandizipEgg.Checked, "Cancelled external format changes are discarded");
+                form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-30000, -30000); form.ShowInTaskbar = false; form.Show();
+                form.Tabs.SelectedIndex = 2; form.FontSize.Value = 18; Application.DoEvents();
+                using (var bitmap = new Bitmap(form.Width, form.Height)) {
+                    form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height)); bitmap.Save(Path.Combine(root, "settings-bandizip-18.png"));
+                }
+                form.Reset.PerformClick(); form.Save();
+                Check(BandizipOptions.Read().Formats == 0, "Default reset disables external integration");
+            }
             string sevenZip = Path.GetDirectoryName(Engine.FindSevenZip());
             foreach (string name in new[] { "7z.exe", "7zG.exe", "7zFM.exe" }) {
                 RuntimeSafety.RequireSupportedSevenZip(Path.Combine(sevenZip, name));

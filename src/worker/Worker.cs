@@ -105,6 +105,7 @@ namespace SevenZipContextMenu
         private readonly Action<string> status;
         private readonly bool nativeProgress;
         private string sevenZip;
+        private BandizipOptions bandizip;
         internal Engine(CancellationToken cancellation, Func<string, string> askPassword, Action<string> status, bool nativeProgress = false)
         { this.cancellation = cancellation; this.askPassword = askPassword; this.status = status; this.nativeProgress = nativeProgress; }
 
@@ -116,7 +117,8 @@ namespace SevenZipContextMenu
             try
             {
                 sevenZip = FindSevenZip();
-                string[] inputs = NormalizeInputs(request);
+                bandizip = BandizipOptions.Read();
+                string[] inputs = NormalizeInputs(request, bandizip.Formats);
                 if (request.Operation == Operation.QuickZip || request.Operation == Operation.Quick7z) {
                     var item = new ItemResult { Input = String.Join("\r\n", inputs) };
                     result.Items.Add(item);
@@ -183,6 +185,14 @@ namespace SevenZipContextMenu
         private static string FirstVolume(string input)
         {
             string filename = Path.GetFileName(input);
+            Match alz = Regex.Match(filename, @"^(.*)\.a\d{2}$", RegexOptions.IgnoreCase);
+            Match egg = Regex.Match(filename, @"^(.*\.vol)\d+(\.egg)$", RegexOptions.IgnoreCase);
+            if (alz.Success || egg.Success) {
+                string name = alz.Success ? alz.Groups[1].Value + ".alz" : egg.Groups[1].Value + "1" + egg.Groups[2].Value;
+                string first = Path.Combine(Path.GetDirectoryName(input), name);
+                if (!File.Exists(first)) throw new FileNotFoundException("분할 압축의 첫 볼륨을 찾을 수 없습니다.", first);
+                return first;
+            }
             Match rar = Regex.Match(filename, @"^(.*\.part)(\d+)(\.rar)$", RegexOptions.IgnoreCase);
             if (rar.Success)
             {
@@ -200,8 +210,9 @@ namespace SevenZipContextMenu
             return input;
         }
 
-        internal static string[] NormalizeInputs(Request request)
+        internal static string[] NormalizeInputs(Request request, int bandizipFormats = -1)
         {
+            if (bandizipFormats < 0) bandizipFormats = BandizipOptions.Read().Formats;
             bool extracting = request.Operation == Operation.SmartExtract || request.Operation == Operation.ExtractToFolder ||
                 request.Operation == Operation.ExtractDialog || request.Operation == Operation.ExtractHere || request.Operation == Operation.Test;
             var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -211,7 +222,7 @@ namespace SevenZipContextMenu
                 string path = Path.GetFullPath(original);
                 if (extracting) path = FirstVolume(path);
                 if (!unique.Add(path)) continue;
-                if (extracting && (!File.Exists(path) || !IsArchive(path)))
+                if (extracting && (!File.Exists(path) || !(IsArchive(path) || BandizipOptions.Supports(path, bandizipFormats))))
                     throw new InvalidDataException("선택한 항목 전체가 지원하는 압축 파일이어야 합니다: " + path);
                 if (!File.Exists(path) && !Directory.Exists(path)) throw new FileNotFoundException("선택한 항목이 없습니다.", path);
                 if (String.Equals(path.TrimEnd('\\'), Path.GetPathRoot(path).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
@@ -234,6 +245,8 @@ namespace SevenZipContextMenu
             string name = Path.GetFileName(input);
             Match rar = Regex.Match(name, @"^(.*)\.part\d+\.rar$", RegexOptions.IgnoreCase);
             if (rar.Success) return ValidStem(rar.Groups[1].Value);
+            Match egg = Regex.Match(name, @"^(.*)\.vol\d+\.egg$", RegexOptions.IgnoreCase);
+            if (egg.Success) return ValidStem(egg.Groups[1].Value);
             foreach (string suffix in new[] { ".tar.gz", ".tar.bz2", ".tar.xz", ".7z.001", ".zip.001", ".tgz", ".tbz2", ".txz" })
                 if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return ValidStem(name.Substring(0, name.Length - suffix.Length));
             return ValidStem(Path.GetFileNameWithoutExtension(name));
@@ -325,6 +338,7 @@ namespace SevenZipContextMenu
 
         private string ExtractToStage(string input, string parent)
         {
+            if (BandizipOptions.Supports(input, bandizip.Formats)) return ExtractBandizipToStage(input, parent);
             string password = null;
             for (int attempt = 0; attempt < 4; attempt++)
             {
@@ -343,6 +357,28 @@ namespace SevenZipContextMenu
                 finally { if (!keep) Cleanup(stage); }
             }
             throw new InvalidDataException("암호를 확인할 수 없습니다.");
+        }
+
+        private string ExtractBandizipToStage(string input, string parent)
+        {
+            BandizipOptions.Validate(bandizip.Executable);
+            string stage = CreateStage(parent);
+            bool keep = false;
+            try {
+                var arguments = new[] { "x", "-y", "-o:" + stage, "-", input };
+                ProcessResult result;
+                if (nativeProgress) {
+                    result = NativeCommands.RunProgress(new LaunchPlan { Executable = bandizip.Executable,
+                        WorkingDirectory = parent, Arguments = arguments }, cancellation, true);
+                } else {
+                    string console = Path.Combine(Path.GetDirectoryName(bandizip.Executable), "bz.exe");
+                    if (!File.Exists(console)) throw new FileNotFoundException("반디집의 bz.exe가 필요합니다.", console);
+                    result = RunConsole(console, parent, new[] { "x", "-y", "-consolemode:utf8", "-o:" + stage, "-", input }, null);
+                }
+                if (result.ExitCode != 0) throw new IOException("반디집 압축 해제를 완료하지 못했습니다 (코드 " + result.ExitCode + ").\r\n" + result.Text);
+                cancellation.ThrowIfCancellationRequested();
+                CheckExtractedTree(stage); keep = true; return stage;
+            } finally { if (!keep) Cleanup(stage); }
         }
 
         private string Extract(string input, bool smart)
@@ -411,7 +447,12 @@ namespace SevenZipContextMenu
             RuntimeSafety.RequireSupportedSevenZip(sevenZip);
             if (nativeProgress)
                 return NativeCommands.RunProgress(NativeCommands.BuildProgressPlan(sevenZip, workingDirectory, arguments), cancellation);
-            var start = new ProcessStartInfo(sevenZip, String.Join(" ", arguments.Select(QuoteArgument))) {
+            return RunConsole(sevenZip, workingDirectory, arguments, password);
+        }
+        private ProcessResult RunConsole(string executable, string workingDirectory, IEnumerable<string> arguments, string password)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var start = new ProcessStartInfo(executable, String.Join(" ", arguments.Select(QuoteArgument))) {
                 UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8

@@ -46,9 +46,11 @@ static std::wstring ExtractFolderLabel(const std::wstring& path)
     auto name = std::filesystem::path(path).filename().wstring();
     std::wstring lower(name);
     std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    const auto part = lower.rfind(L".part");
-    if (lower.ends_with(L".rar") && part != std::wstring::npos && part + 5 < lower.size() - 4 &&
-        std::all_of(lower.begin() + part + 5, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
+    const auto marker = lower.ends_with(L".rar") ? L".part" : L".vol";
+    const auto part = lower.rfind(marker);
+    const auto digits = part == std::wstring::npos ? part : part + std::wcslen(marker);
+    if ((lower.ends_with(L".rar") || lower.ends_with(L".egg")) && part != std::wstring::npos && digits < lower.size() - 4 &&
+        std::all_of(lower.begin() + digits, lower.end() - 4, [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
         name.resize(part);
     } else {
         if (lower.size() > 4 && lower[lower.size() - 4] == L'.' &&
@@ -117,6 +119,16 @@ DWORD ReadOptions()
         RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &value, &size) != ERROR_SUCCESS)
         return kDefaultOptions;
     return value;
+}
+
+static bool IsBandizipArchive(const std::wstring& path, DWORD formats)
+{
+    std::wstring lower(path);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    const auto length = lower.size();
+    return ((formats & 1) && (lower.ends_with(L".alz") || (length >= 4 && lower[length - 4] == L'.' &&
+        lower[length - 3] == L'a' && lower[length - 2] >= L'0' && lower[length - 2] <= L'9' && lower[length - 1] >= L'0' && lower[length - 1] <= L'9'))) ||
+        ((formats & 2) && lower.ends_with(L".egg"));
 }
 
 std::vector<Command> CommandCatalog()
@@ -192,10 +204,16 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
 {
     if (paths.empty()) return {};
     bool archivesOnly = true;
+    bool nativeArchivesOnly = true;
+    DWORD bandizipFormats = 0, bytes = sizeof(bandizipFormats);
+    if (RegGetValueW(HKEY_CURRENT_USER, kOptionsKey, L"BandizipFormatsV1", RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
+        nullptr, &bandizipFormats, &bytes) != ERROR_SUCCESS) bandizipFormats = 0;
     for (const auto& path : paths) {
         const DWORD attributes = GetFileAttributesW(path.c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES) return {};
-        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 || !IsArchiveName(path)) archivesOnly = false;
+        const bool nativeArchive = !(attributes & FILE_ATTRIBUTE_DIRECTORY) && IsArchiveName(path);
+        if (!nativeArchive) nativeArchivesOnly = false;
+        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 || (!nativeArchive && !IsBandizipArchive(path, bandizipFormats))) archivesOnly = false;
     }
     std::vector<Command> result;
     for (auto command : CommandCatalog()) {
@@ -207,7 +225,7 @@ std::vector<Command> BuildCommands(const std::vector<std::wstring>& paths, DWORD
         if ((op == Operation::CompressZip || op == Operation::Compress7z) && archivesOnly) continue;
         const bool singleFile = paths.size() == 1 && !(GetFileAttributesW(paths[0].c_str()) & FILE_ATTRIBUTE_DIRECTORY);
         if ((op == Operation::Open || command.group == 1) && !singleFile) continue;
-        if (op == Operation::Open && !archivesOnly) continue;
+        if ((op == Operation::Open || op == Operation::ExtractDialog || op == Operation::ExtractHere || op == Operation::Test) && !nativeArchivesOnly) continue;
         if (op == Operation::ExtractToFolder && paths.size() == 1)
             command.title = ExtractFolderLabel(paths[0]);
         if (op == Operation::QuickZip || op == Operation::Quick7z) {

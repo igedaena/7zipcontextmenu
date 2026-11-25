@@ -37,10 +37,12 @@ internal static class NativeProgressTests
             return text;
         }
     }
-    private sealed class DialogMonitor : IDisposable
+    internal sealed class DialogMonitor : IDisposable
     {
         internal bool SawProgress, SawPassword, CancelNative, CancelSent;
         internal string Password, Screenshot;
+        internal string ProcessName = "7zG";
+        internal bool CloseExternalDialogs;
         internal string Error;
         internal readonly StringBuilder Diagnostics=new StringBuilder();
         private readonly HashSet<IntPtr> diagnosed=new HashSet<IntPtr>();
@@ -83,10 +85,30 @@ internal static class NativeProgressTests
             try {
                 while (!stopped) {
                     var candidates = new HashSet<int>();
-                    foreach (var process in Process.GetProcessesByName("7zG")) using (process) if (Owns(process.Id)) candidates.Add(process.Id);
+                    foreach (var process in Process.GetProcessesByName(ProcessName)) using (process) if (Owns(process.Id)) candidates.Add(process.Id);
                     EnumWindows(delegate(IntPtr window, IntPtr unused) {
                         uint pid; GetWindowThreadProcessId(window, out pid);
                         if (!candidates.Contains((int)pid)) return true;
+                        if (ProcessName == "Bandizip" && IsWindowVisible(window)) {
+                            bool first = diagnosed.Add(window);
+                            if (first) Diagnostics.AppendLine("Bandizip window: " + Text(window));
+                            IntPtr button = IntPtr.Zero;
+                            EnumChildWindows(window, delegate(IntPtr child, IntPtr state) {
+                                if (!IsWindowVisible(child)) return true;
+                                var name = new StringBuilder(128); GetClassName(child, name, name.Capacity);
+                                string text = name.ToString().IndexOf("Edit", StringComparison.OrdinalIgnoreCase) >= 0 ? "[omitted]" : Text(child);
+                                if (first) Diagnostics.AppendLine(name + " id=" + GetDlgCtrlID(child) + " text=" + text);
+                                if (name.ToString().IndexOf("Button", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                    (text.Contains("확인") || text.Contains("닫기") || text.Contains("예") || (CancelNative && (text.Contains("취소") || text.Contains("중지"))) || text == "OK" || text == "Close" || text == "Cancel" || text == "Yes")) button = child;
+                                return true;
+                            }, IntPtr.Zero);
+                            if (CancelNative || (CloseExternalDialogs && elapsed.ElapsedMilliseconds > 700)) {
+                                CancelSent = true;
+                                if (button != IntPtr.Zero) PostMessage(button, 0x00f5, IntPtr.Zero, IntPtr.Zero);
+                                else PostMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero);
+                            }
+                            return true;
+                        }
                         bool diagnose=Password!=null && IsWindowVisible(window) && diagnosed.Add(window);
                         if(diagnose)Diagnostics.AppendLine("WINDOW: "+Text(window));
                         bool progress = false; IntPtr password = IntPtr.Zero, edit = IntPtr.Zero;

@@ -138,7 +138,7 @@ int wmain(int argc, wchar_t** argv)
                         const std::vector<std::pair<std::wstring, std::wstring>> cases{
                             {L"extract-simple", L"sample"}, {L"extract-tar", L"bundle"},
                             {L"extract-split", L"bundle"}, {L"extract-rar", L"bundle"},
-                            {L"extract-empty", L"archive"}, {L"extract-ampersand", L"한글 && 문서"}};
+                            {L"extract-empty", L"archive"}, {L"extract-ampersand", L"한글 && 문서"}, {L"extract-bandi", L"bundle"}};
                         for (const auto& [scenario, expected] : cases)
                             if (mode.find(scenario) != std::wstring::npos)
                                 Check(label == L"\"" + expected + L"\\\" 에 풀기", "Extraction label matches the normalized output stem");
@@ -241,6 +241,10 @@ int wmain(int argc, wchar_t** argv)
             }
             else if (mode.find(L"filter") != std::wstring::npos) {
                 Check(verbs.size() == 2 && verbs.contains("SevenZipExt.Quick7z"), "One enabled command plus settings");
+            } else if (mode.find(L"-bandizip-") != std::wstring::npos) {
+                const bool enabled = mode.find(L"-bandizip-on") != std::wstring::npos;
+                Check(verbs.contains("SevenZipExt.ExtractToFolder") == enabled && verbs.contains("SevenZipExt.SmartExtract") == enabled, "External formats follow the integration selection");
+                Check(!verbs.contains("SevenZipExt.Open") && !verbs.contains("SevenZipExt.Test") && !verbs.contains("SevenZipExt.ExtractHere"), "Native-only commands stay hidden for external formats");
             } else if (mode.find(L"-extract-") != std::wstring::npos) {
                 Check(verbs.contains("SevenZipExt.ExtractToFolder") && verbs.contains("SevenZipExt.Open"), "Archive fixture exposes extraction and open commands");
             } else {
